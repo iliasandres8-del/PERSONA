@@ -158,7 +158,7 @@ async function loadDinero(){
   const totalExpenses = (expenses||[]).reduce((s,x)=>s+Number(x.amount||0),0);
   const totalSaved = (savings||[]).reduce((s,x)=>s+Number(x.amount||0),0);
 
-  document.getElementById("money-balance").textContent = money(totalIncome-totalExpenses);
+  document.getElementById("money-balance").textContent = money(totalIncome-totalExpenses-totalSaved);
   document.getElementById("money-saved").textContent = money(totalSaved);
 
   const goal = goals && goals[0];
@@ -457,8 +457,8 @@ function wireSubnav(navId, panelPrefix, subkeys, loaderMap){
 }
 
 // ==================== MODULO DINERO ====================
-wireSubnav("dinero-subnav","dsub-",["ingresos","gastos","ahorros","meta","recurrentes","stats"],{
-  ingresos: loadIngresos, gastos: loadGastos, ahorros: loadAhorros, meta: loadMeta, recurrentes: loadRecurrentes, stats: loadStats
+wireSubnav("dinero-subnav","dsub-",["ingresos","gastos","ahorros","deudas","meta","recurrentes","stats"],{
+  ingresos: loadIngresos, gastos: loadGastos, ahorros: loadAhorros, deudas: loadDeudas, meta: loadMeta, recurrentes: loadRecurrentes, stats: loadStats
 });
 
 async function loadIngresos(){
@@ -478,6 +478,13 @@ document.getElementById("in-add").onclick = async ()=>{
   if(!entry_date || isNaN(amount)) return;
   await db.from("income").insert({ user_id: currentUser.id, entry_date, description, amount });
   document.getElementById("in-desc").value=""; document.getElementById("in-monto").value="";
+  loadIngresos(); loadDinero();
+};
+document.getElementById("btn-hoy-trabaje").onclick = async ()=>{
+  const btn = document.getElementById("btn-hoy-trabaje");
+  btn.disabled = true;
+  await db.from("income").insert({ user_id: currentUser.id, entry_date: new Date().toISOString().slice(0,10), description: "Trabajo", amount: 60000 });
+  btn.disabled = false;
   loadIngresos(); loadDinero();
 };
 
@@ -518,6 +525,50 @@ document.getElementById("ah-add").onclick = async ()=>{
   await db.from("savings").insert({ user_id: currentUser.id, entry_date, amount, note });
   document.getElementById("ah-monto").value=""; document.getElementById("ah-nota").value="";
   loadAhorros(); loadDinero();
+};
+
+async function loadDeudas(){
+  const el = document.getElementById("deudas-list");
+  const { data, error } = await db.from("debts").select("*").order("paid",{ascending:true}).order("due_date",{ascending:true});
+  if(error || !data || data.length===0){ el.innerHTML = '<div class="empty-state">No tienes deudas registradas.</div>'; return; }
+  const pendientes = data.filter(d=>!d.paid);
+  const pagadas = data.filter(d=>d.paid);
+  const totalPendiente = pendientes.reduce((s,x)=>s+Number(x.amount||0),0);
+
+  let html = `<div class="stat-tile" style="--accent:var(--danger);margin-bottom:14px;max-width:220px;"><div class="label">Total pendiente</div><div class="value">${money(totalPendiente)}</div></div>`;
+
+  if(pendientes.length>0){
+    html += `<table class="data-table"><tr><th>Deuda</th><th>Monto</th><th>Fecha limite</th><th></th></tr>` +
+      pendientes.map(d=>`<tr>
+        <td>${d.description}</td><td class="num">${money(d.amount)}</td><td class="num">${d.due_date||""}</td>
+        <td><button class="row-del" data-id="${d.id}" data-action="pagar" style="color:var(--dinero);">Pagar</button> <button class="row-del" data-id="${d.id}" data-action="del">Eliminar</button></td>
+      </tr>`).join("") + `</table>`;
+  }
+  if(pagadas.length>0){
+    html += `<h3 style="font-size:13px;margin:16px 0 8px 0;color:var(--muted);">Pagadas</h3><table class="data-table">` +
+      pagadas.map(d=>`<tr style="color:var(--muted);"><td>${d.description}</td><td class="num">${money(d.amount)}</td><td class="num">${d.paid_date||""}</td><td></td></tr>`).join("") + `</table>`;
+  }
+  el.innerHTML = html;
+  el.querySelectorAll("[data-action='pagar']").forEach(b=>b.onclick=async()=>{
+    const debt = data.find(d=>d.id===b.dataset.id);
+    const hoy = new Date().toISOString().slice(0,10);
+    await db.from("expenses").insert({ user_id: currentUser.id, entry_date: hoy, description: "Pago: "+debt.description, category:"Deuda", amount: debt.amount });
+    await db.from("debts").update({ paid:true, paid_date: hoy }).eq("id", debt.id);
+    loadDeudas(); loadDinero();
+  });
+  el.querySelectorAll("[data-action='del']").forEach(b=>b.onclick=async()=>{
+    await db.from("debts").delete().eq("id", b.dataset.id);
+    loadDeudas();
+  });
+}
+document.getElementById("de-add").onclick = async ()=>{
+  const description = document.getElementById("de-desc").value.trim();
+  const amount = parseFloat(document.getElementById("de-monto").value);
+  const due_date = document.getElementById("de-fecha").value || null;
+  if(!description || isNaN(amount)) return;
+  await db.from("debts").insert({ user_id: currentUser.id, description, amount, due_date });
+  document.getElementById("de-desc").value=""; document.getElementById("de-monto").value="";
+  loadDeudas();
 };
 
 let currentGoalId = null;
@@ -615,12 +666,12 @@ async function loadStats(){
   const totalExp = (exp||[]).reduce((s,x)=>s+Number(x.amount||0),0);
   const totalSav = (sav||[]).reduce((s,x)=>s+Number(x.amount||0),0);
   const recMensual = (rec||[]).filter(r=>r.frequency==="mensual").reduce((s,x)=>s+Number(x.amount||0),0);
-  const balance = totalInc-totalExp;
+  const balance = totalInc-totalExp-totalSav;
 
   let html = `<div class="stat-grid">
     <div class="stat-tile" style="--accent:var(--dinero)"><div class="label">Ingresos totales</div><div class="value">${money(totalInc)}</div></div>
     <div class="stat-tile" style="--accent:var(--danger)"><div class="label">Gastos totales</div><div class="value">${money(totalExp)}</div></div>
-    <div class="stat-tile" style="--accent:${balance<0?'var(--danger)':'var(--dinero)'}"><div class="label">Balance</div><div class="value">${money(balance)}</div></div>
+    <div class="stat-tile" style="--accent:${balance<0?'var(--danger)':'var(--dinero)'}"><div class="label">Saldo disponible</div><div class="value">${money(balance)}</div></div>
     <div class="stat-tile" style="--accent:var(--dinero)"><div class="label">Ahorrado</div><div class="value">${money(totalSav)}</div></div>
     <div class="stat-tile" style="--accent:var(--danger)"><div class="label">Recurrentes mensuales</div><div class="value">${money(recMensual)}</div></div>
   </div>`;
