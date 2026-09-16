@@ -92,38 +92,143 @@ async function loadDashboard(){
   ]);
 }
 
-// -- Ahora / Despues --
+// -- Ahora / Despues: motor de recomendaciones --
+const ATTN_EMOJI = { baja:"🟢", media:"🟡", alta:"🔴" };
+const DEFAULT_DURATION = { baja:15, media:25, alta:45 };
+const GENERIC_ACTIVITIES = [
+  { title:"Practicar ingles", icon:"🇺🇸", attention:"baja", duration:12 },
+  { title:"Leer un libro", icon:"📖", attention:"baja", duration:15 },
+  { title:"Aprender algo nuevo", icon:"🧠", attention:"baja", duration:15 },
+  { title:"Leer documentacion de programacion", icon:"💻", attention:"baja", duration:15 },
+  { title:"Organizar tareas de manana", icon:"📋", attention:"baja", duration:5 },
+  { title:"Registrar gastos e ingresos", icon:"💰", attention:"baja", duration:3 },
+  { title:"Revisar tu rutina del gym", icon:"🏋️", attention:"baja", duration:5 },
+  { title:"Ordenar archivos o codigo", icon:"🧹", attention:"baja", duration:15 },
+  { title:"Ver o analizar algo de futbol", icon:"⚽", attention:"baja", duration:15 },
+  { title:"Descansar", icon:"😴", attention:"baja", duration:15 },
+  { title:"Revisar tareas pendientes", icon:"📝", attention:"baja", duration:5 },
+  { title:"Resolver ejercicios sencillos", icon:"🧮", attention:"media", duration:20 },
+  { title:"Trabajar en PERSONA", icon:"💻", attention:"media", duration:20 }
+];
+
 async function loadAhoraDespues(){
-  const { data, error } = await db.from("schedule_blocks")
-    .select("*")
-    .eq("day_of_week", todayKey())
-    .order("start_time", { ascending: true });
+  const [{data, error}, {data:subjects}, {data:tasks}] = await Promise.all([
+    db.from("schedule_blocks").select("*"),
+    db.from("subjects").select("*"),
+    db.from("tasks").select("*").neq("status","completada")
+  ]);
 
   const nowTitle = document.getElementById("now-title");
   const nowTime = document.getElementById("now-time");
-  const nextList = document.getElementById("next-list");
+  const recoEl = document.getElementById("reco-content");
+  if(error){ nowTitle.textContent = "No se pudo cargar tu horario."; recoEl.innerHTML=""; return; }
 
-  if(error){ nowTitle.textContent = "No se pudo cargar tu horario."; nextList.innerHTML = ""; return; }
-
+  const orden = {lunes:1,martes:2,miercoles:3,jueves:4,viernes:5,sabado:6,domingo:7};
+  const hoyKey = todayKey();
   const now = nowHHMM();
-  const actual = (data||[]).find(b=> b.start_time <= now && now < b.end_time);
-  const proximos = (data||[]).filter(b=> b.start_time > now);
+  const nd = new Date();
+  const nowMinutes = nd.getHours()*60 + nd.getMinutes();
+
+  const deHoy = (data||[]).filter(b=>b.day_of_week===hoyKey).sort((a,b)=>a.start_time.localeCompare(b.start_time));
+  const actual = deHoy.find(b=> b.start_time <= now && now < b.end_time);
+  const proximosHoy = deHoy.filter(b=> b.start_time > now);
+  const enTrabajo = !!(actual && actual.category === "trabajo");
 
   if(actual){
-    nowTitle.textContent = actual.title;
+    nowTitle.textContent = (enTrabajo ? "🟢 " : "") + actual.title;
     nowTime.textContent = fmtHora(actual.start_time) + " - " + fmtHora(actual.end_time);
   }else{
     nowTitle.textContent = "Sin actividad agendada ahora";
     nowTime.textContent = "";
   }
 
-  if(proximos.length===0){
-    nextList.innerHTML = '<div class="empty-state">No tienes mas bloques agendados hoy.</div>';
+  // -- Proxima actividad y minutos disponibles --
+  let proximaActividad = null;
+  let minutesAvailable = null;
+  if(proximosHoy.length>0){
+    proximaActividad = proximosHoy[0];
+    const [h,m] = proximaActividad.start_time.split(":").map(Number);
+    minutesAvailable = Math.max(0, (h*60+m) - nowMinutes);
   }else{
-    nextList.innerHTML = proximos.slice(0,4).map(b=>
-      `<div class="next-row"><span>${b.title}</span><span class="time mono">${fmtHora(b.start_time)}</span></div>`
-    ).join("");
+    const hoyOrden = orden[hoyKey];
+    for(let i=1;i<=7;i++){
+      const ordenBuscado = ((hoyOrden - 1 + i) % 7) + 1;
+      const diaBuscado = Object.keys(orden).find(k=>orden[k]===ordenBuscado);
+      const bloques = (data||[]).filter(b=>b.day_of_week===diaBuscado).sort((a,b)=>a.start_time.localeCompare(b.start_time));
+      if(bloques.length>0){
+        proximaActividad = Object.assign({_dia: i===1 ? "Manana" : cap(diaBuscado)}, bloques[0]);
+        break;
+      }
+    }
   }
+
+  // -- Candidatos --
+  const subMap = {}; (subjects||[]).forEach(s=>subMap[s.id]=s.name);
+  const noRecomendado = [];
+  let candidatos = [];
+
+  (tasks||[]).slice().sort((a,b)=>(a.due_date||"9999").localeCompare(b.due_date||"9999")).forEach(t=>{
+    const attn = t.attention_level || "media";
+    const dur = t.estimated_minutes || DEFAULT_DURATION[attn];
+    const materiaNombre = subMap[t.subject_id];
+    const label = t.title + (materiaNombre ? " ("+materiaNombre+")" : "");
+    if(attn==="alta" && (enTrabajo || (minutesAvailable!==null && minutesAvailable < dur))){
+      noRecomendado.push({ title:t.title, materia:materiaNombre });
+      candidatos.push({ title:"Preparar: "+t.title, icon:"🗂️", attention:"baja", duration:Math.min(10, minutesAvailable||10), fuente:0 });
+    }else{
+      candidatos.push({ title:"Avanzar: "+label, icon:"📚", attention:attn, duration:dur, fuente:0 });
+    }
+  });
+
+  (subjects||[]).slice(0,3).forEach(s=>{
+    candidatos.push({ title:"Repasar apuntes de "+s.name, icon:"📚", attention:"baja", duration:15, fuente:1 });
+  });
+
+  GENERIC_ACTIVITIES.forEach(a=>{
+    candidatos.push(Object.assign({fuente:2}, a));
+  });
+
+  // -- Filtrar por contexto (trabajo = solo baja/media) y por tiempo disponible --
+  let attentionAllowed;
+  if(enTrabajo){
+    attentionAllowed = (minutesAvailable!==null && minutesAvailable<=20) ? ["baja"] : ["baja","media"];
+  }else if(minutesAvailable!==null){
+    attentionAllowed = minutesAvailable<=20 ? ["baja"] : (minutesAvailable<=60 ? ["baja","media"] : ["baja","media","alta"]);
+  }else{
+    attentionAllowed = ["baja","media","alta"];
+  }
+  const availCap = minutesAvailable===null ? 60 : minutesAvailable;
+
+  const filtrados = candidatos
+    .filter(c=> attentionAllowed.includes(c.attention) && c.duration <= availCap)
+    .sort((a,b)=> a.fuente-b.fuente);
+
+  const primaria = filtrados[0];
+  const alternativas = filtrados.slice(1,4);
+
+  // -- Render --
+  let html = "";
+  if(proximaActividad){
+    const dia = proximaActividad._dia ? proximaActividad._dia+": " : "";
+    html += `<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px 0;">Tu proxima actividad agendada: ${dia}${proximaActividad.title} a las ${fmtHora(proximaActividad.start_time)}</p>`;
+  }
+  html += minutesAvailable!==null
+    ? `<p style="font-size:13px;color:var(--muted);margin:0 0 10px 0;">Tienes aproximadamente <b style="color:var(--text)">${minutesAvailable} min</b> disponibles${enTrabajo?" (estas en el trabajo)":""}.</p>`
+    : `<p style="font-size:13px;color:var(--muted);margin:0 0 10px 0;">Tienes el resto del dia libre.</p>`;
+
+  if(primaria){
+    html += `<div class="reco-primary">${ATTN_EMOJI[primaria.attention]} ${primaria.icon} ${primaria.title} — ${primaria.duration} min</div>`;
+  }else{
+    html += `<div class="empty-state">No hay una recomendacion clara ahora mismo.</div>`;
+  }
+  if(alternativas.length>0){
+    html += `<div style="font-size:12px;color:var(--muted);margin:10px 0 3px 0;">Tambien puedes:</div>` +
+      alternativas.map(a=>`<div class="reco-alt">${ATTN_EMOJI[a.attention]} ${a.icon} ${a.title} — ${a.duration} min</div>`).join("");
+  }
+  if(noRecomendado.length>0){
+    html += `<div class="reco-warn">⚠️ No recomendado ahora: ${ATTN_EMOJI.alta} ${noRecomendado[0].title}${noRecomendado[0].materia?" ("+noRecomendado[0].materia+")":""}</div>`;
+  }
+  recoEl.innerHTML = html;
 }
 
 // -- Tareas --
@@ -720,26 +825,48 @@ document.getElementById("mat-add").onclick = async ()=>{
   loadMaterias();
 };
 
-async function fillMateriaSelect(){
-  const sel = document.getElementById("ta-materia");
-  const { data } = await db.from("subjects").select("*");
-  sel.innerHTML = '<option value="">Sin materia</option>' + (data||[]).map(m=>`<option value="${m.id}">${m.name}</option>`).join("");
-}
+let taskFilter = "todas";
+document.getElementById("tareas-filtros").addEventListener("click",(e)=>{
+  const btn = e.target.closest("button[data-filter]");
+  if(!btn) return;
+  document.querySelectorAll("#tareas-filtros button[data-filter]").forEach(b=>b.classList.remove("sub-active"));
+  btn.classList.add("sub-active");
+  taskFilter = btn.dataset.filter;
+  loadTareasFull();
+});
+document.getElementById("ta-ir-sync").onclick = ()=>{
+  document.querySelector('#estudio-subnav button[data-sub="sync"]').click();
+};
+
 async function loadTareasFull(){
-  await fillMateriaSelect();
   const el = document.getElementById("tareas-full-list");
   const [{data:tasks, error}, {data:subs}] = await Promise.all([
     db.from("tasks").select("*").order("due_date",{ascending:true}),
     db.from("subjects").select("*")
   ]);
-  if(error || !tasks || tasks.length===0){ el.innerHTML = '<div class="empty-state">No hay tareas registradas.</div>'; return; }
+  if(error){ el.innerHTML = '<div class="empty-state">No se pudieron cargar las tareas.</div>'; return; }
   const hoy = new Date().toISOString().slice(0,10);
   const subMap = {}; (subs||[]).forEach(s=>subMap[s.id]=s.name);
-  el.innerHTML = `<table class="data-table"><tr><th>Tarea</th><th>Materia</th><th>Entrega</th><th>Estado</th><th></th></tr>` +
-    tasks.map(t=>{
+
+  let filtradas = tasks||[];
+  if(taskFilter==="pendiente") filtradas = filtradas.filter(t=>t.status!=="completada" && !(t.due_date && t.due_date<hoy));
+  if(taskFilter==="vencida") filtradas = filtradas.filter(t=>t.due_date && t.due_date<hoy && t.status!=="completada");
+  if(taskFilter==="completada") filtradas = filtradas.filter(t=>t.status==="completada");
+
+  if(filtradas.length===0){
+    el.innerHTML = '<div class="empty-state">No hay tareas en esta vista. Sincroniza con Aula Extendida para traer las mas recientes.</div>';
+    return;
+  }
+  el.innerHTML = `<table class="data-table"><tr><th>Tarea</th><th>Materia</th><th>Entrega</th><th>Atencion</th><th>Estado</th><th></th></tr>` +
+    filtradas.map(t=>{
       const vencida = t.due_date && t.due_date<hoy && t.status!=="completada";
       return `<tr style="${vencida?'color:var(--danger)':''}">
         <td>${t.title}</td><td>${subMap[t.subject_id]||"-"}</td><td class="num">${t.due_date||""}</td>
+        <td><select data-id="${t.id}" class="ta-attn">
+          <option value="baja" ${t.attention_level==="baja"?"selected":""}>🟢 Baja</option>
+          <option value="media" ${t.attention_level==="media"?"selected":""}>🟡 Media</option>
+          <option value="alta" ${t.attention_level==="alta"?"selected":""}>🔴 Alta</option>
+        </select></td>
         <td><select data-id="${t.id}" class="ta-status">
           <option value="pendiente" ${t.status==="pendiente"?"selected":""}>Pendiente</option>
           <option value="en_progreso" ${t.status==="en_progreso"?"selected":""}>En progreso</option>
@@ -748,19 +875,10 @@ async function loadTareasFull(){
         <td><button class="row-del" data-id="${t.id}">Eliminar</button></td>
       </tr>`;
     }).join("") + `</table>`;
-  el.querySelectorAll(".ta-status").forEach(s=>s.onchange=async(e)=>{ await db.from("tasks").update({status:e.target.value}).eq("id",s.dataset.id); loadTareasFull(); loadTareas(); });
-  el.querySelectorAll(".row-del").forEach(b=>b.onclick=async()=>{ await db.from("tasks").delete().eq("id",b.dataset.id); loadTareasFull(); loadTareas(); });
+  el.querySelectorAll(".ta-attn").forEach(s=>s.onchange=async(e)=>{ await db.from("tasks").update({attention_level:e.target.value}).eq("id",s.dataset.id); loadAhoraDespues(); });
+  el.querySelectorAll(".ta-status").forEach(s=>s.onchange=async(e)=>{ await db.from("tasks").update({status:e.target.value}).eq("id",s.dataset.id); loadTareasFull(); loadTareas(); loadAhoraDespues(); });
+  el.querySelectorAll(".row-del").forEach(b=>b.onclick=async()=>{ await db.from("tasks").delete().eq("id",b.dataset.id); loadTareasFull(); loadTareas(); loadAhoraDespues(); });
 }
-document.getElementById("ta-add").onclick = async ()=>{
-  const subject_id = document.getElementById("ta-materia").value || null;
-  const title = document.getElementById("ta-titulo").value.trim();
-  const due_date = document.getElementById("ta-fecha").value || null;
-  const priority = document.getElementById("ta-prioridad").value;
-  if(!title) return;
-  await db.from("tasks").insert({ user_id: currentUser.id, subject_id, title, due_date, priority });
-  document.getElementById("ta-titulo").value="";
-  loadTareasFull(); loadTareas();
-};
 
 async function loadAula(){
   const el = document.getElementById("aula-content");
