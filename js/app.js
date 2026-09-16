@@ -110,12 +110,45 @@ const GENERIC_ACTIVITIES = [
   { title:"Resolver ejercicios sencillos", icon:"🧮", attention:"media", duration:20 },
   { title:"Trabajar en PERSONA", icon:"💻", attention:"media", duration:20 }
 ];
+const CONTEXTS = [
+  { key:"clase", label:"Clase", icon:"🎓" },
+  { key:"trabajo", label:"Trabajo", icon:"💼" },
+  { key:"novia", label:"Con mi novia", icon:"❤️" },
+  { key:"amigos", label:"Con amigos", icon:"👥" },
+  { key:"familia", label:"Con familia", icon:"🏠" },
+  { key:"estudio", label:"Estudiando", icon:"📚" },
+  { key:"gym", label:"Entrenando", icon:"🏋️" },
+  { key:"leyendo", label:"Leyendo", icon:"📖" },
+  { key:"descansando", label:"Descansando", icon:"😴" },
+  { key:"futbol", label:"Futbol", icon:"⚽" },
+  { key:"programando", label:"Programando", icon:"🧑‍💻" },
+  { key:"otro", label:"Otra cosa", icon:"➕" }
+];
+const CTX_SIN_NAG = ["novia","amigos","familia","descansando","futbol"];
+const CTX_ENFOCADO = ["estudio","gym","programando","leyendo"];
+const CTX_BAJA_TOLERANCIA = ["trabajo","clase"];
+
+async function setMiContexto(key){
+  await db.from("user_context").upsert({ user_id: currentUser.id, context:key, updated_at:new Date().toISOString() }, { onConflict:"user_id" });
+  loadAhoraDespues();
+}
+
+function renderContextChips(activeKey){
+  const el = document.getElementById("context-chips");
+  el.innerHTML = CONTEXTS.map(c=>
+    `<button data-ctx="${c.key}" class="${activeKey===c.key?'active':''}">${c.icon} ${c.label}</button>`
+  ).join("");
+  el.querySelectorAll("button[data-ctx]").forEach(b=>{
+    b.onclick = ()=> setMiContexto(b.dataset.ctx);
+  });
+}
 
 async function loadAhoraDespues(){
-  const [{data, error}, {data:subjects}, {data:tasks}] = await Promise.all([
+  const [{data, error}, {data:subjects}, {data:tasks}, {data:ctxRows}] = await Promise.all([
     db.from("schedule_blocks").select("*"),
     db.from("subjects").select("*"),
-    db.from("tasks").select("*").neq("status","completada")
+    db.from("tasks").select("*").neq("status","completada"),
+    db.from("user_context").select("*").limit(1)
   ]);
 
   const nowTitle = document.getElementById("now-title");
@@ -128,14 +161,25 @@ async function loadAhoraDespues(){
   const now = nowHHMM();
   const nd = new Date();
   const nowMinutes = nd.getHours()*60 + nd.getMinutes();
+  const hoyISO = nd.toISOString().slice(0,10);
+
+  // -- Contexto manual (solo cuenta si se marco hoy) --
+  const ctxRow = ctxRows && ctxRows[0];
+  const manualContext = (ctxRow && ctxRow.context && ctxRow.updated_at && ctxRow.updated_at.slice(0,10)===hoyISO) ? ctxRow.context : null;
+  renderContextChips(manualContext);
 
   const deHoy = (data||[]).filter(b=>b.day_of_week===hoyKey).sort((a,b)=>a.start_time.localeCompare(b.start_time));
   const actual = deHoy.find(b=> b.start_time <= now && now < b.end_time);
   const proximosHoy = deHoy.filter(b=> b.start_time > now);
-  const enTrabajo = !!(actual && actual.category === "trabajo");
+
+  const scheduleGuess = actual ? (actual.category==="trabajo" ? "trabajo" : actual.category==="universidad" ? "clase" : actual.category==="gym" ? "gym" : null) : null;
+  const efectivo = manualContext || scheduleGuess;
+  const sinNag = CTX_SIN_NAG.includes(efectivo);
+  const enfocado = CTX_ENFOCADO.includes(efectivo) && !sinNag;
+  const bajaTolerancia = CTX_BAJA_TOLERANCIA.includes(efectivo);
 
   if(actual){
-    nowTitle.textContent = (enTrabajo ? "🟢 " : "") + actual.title;
+    nowTitle.textContent = actual.title;
     nowTime.textContent = fmtHora(actual.start_time) + " - " + fmtHora(actual.end_time);
   }else{
     nowTitle.textContent = "Sin actividad agendada ahora";
@@ -161,6 +205,29 @@ async function loadAhoraDespues(){
       }
     }
   }
+  const proximaLinea = proximaActividad
+    ? `${proximaActividad._dia ? proximaActividad._dia+": " : ""}${proximaActividad.title} a las ${fmtHora(proximaActividad.start_time)}`
+    : null;
+
+  // -- Contextos donde PERSONA no debe sugerir nada: solo acompanar --
+  if(sinNag){
+    let html = `<div class="reco-primary">Disfruta este momento, no hace falta que hagas nada mas ahora.</div>`;
+    if(proximaLinea){
+      html += `<p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Cuando termines, sigue: ${proximaLinea}.</p>`;
+    }
+    recoEl.innerHTML = html;
+    return;
+  }
+
+  // -- Ya estas en algo que requiere tu atencion: no interrumpir con sugerencias --
+  if(enfocado){
+    let html = `<div class="reco-primary">Sigue asi.</div>`;
+    if(proximaLinea){
+      html += `<p style="font-size:12.5px;color:var(--muted);margin-top:10px;">Despues de esto: ${proximaLinea}.</p>`;
+    }
+    recoEl.innerHTML = html;
+    return;
+  }
 
   // -- Candidatos --
   const subMap = {}; (subjects||[]).forEach(s=>subMap[s.id]=s.name);
@@ -172,7 +239,7 @@ async function loadAhoraDespues(){
     const dur = t.estimated_minutes || DEFAULT_DURATION[attn];
     const materiaNombre = subMap[t.subject_id];
     const label = t.title + (materiaNombre ? " ("+materiaNombre+")" : "");
-    if(attn==="alta" && (enTrabajo || (minutesAvailable!==null && minutesAvailable < dur))){
+    if(attn==="alta" && (bajaTolerancia || (minutesAvailable!==null && minutesAvailable < dur))){
       noRecomendado.push({ title:t.title, materia:materiaNombre });
       candidatos.push({ title:"Preparar: "+t.title, icon:"🗂️", attention:"baja", duration:Math.min(10, minutesAvailable||10), fuente:0 });
     }else{
@@ -188,9 +255,9 @@ async function loadAhoraDespues(){
     candidatos.push(Object.assign({fuente:2}, a));
   });
 
-  // -- Filtrar por contexto (trabajo = solo baja/media) y por tiempo disponible --
+  // -- Filtrar por contexto y por tiempo disponible --
   let attentionAllowed;
-  if(enTrabajo){
+  if(bajaTolerancia){
     attentionAllowed = (minutesAvailable!==null && minutesAvailable<=20) ? ["baja"] : ["baja","media"];
   }else if(minutesAvailable!==null){
     attentionAllowed = minutesAvailable<=20 ? ["baja"] : (minutesAvailable<=60 ? ["baja","media"] : ["baja","media","alta"]);
@@ -206,27 +273,30 @@ async function loadAhoraDespues(){
   const primaria = filtrados[0];
   const alternativas = filtrados.slice(1,4);
 
-  // -- Render --
+  // -- Render narrativo --
   let html = "";
-  if(proximaActividad){
-    const dia = proximaActividad._dia ? proximaActividad._dia+": " : "";
-    html += `<p style="font-size:12.5px;color:var(--muted);margin:0 0 10px 0;">Tu proxima actividad agendada: ${dia}${proximaActividad.title} a las ${fmtHora(proximaActividad.start_time)}</p>`;
+  if(bajaTolerancia){
+    const lugar = efectivo==="clase" ? "en clase" : "en el trabajo";
+    html += minutesAvailable!==null
+      ? `<p style="font-size:13px;color:var(--muted);margin:0 0 10px 0;">Estas ${lugar}. En unos <b style="color:var(--text)">${minutesAvailable} min</b> vas a tener un espacio libre.</p>`
+      : `<p style="font-size:13px;color:var(--muted);margin:0 0 10px 0;">Estas ${lugar} y por ahora no tienes mas bloques agendados despues.</p>`;
+  }else{
+    html += minutesAvailable!==null
+      ? `<p style="font-size:13px;color:var(--muted);margin:0 0 10px 0;">Tienes aproximadamente <b style="color:var(--text)">${minutesAvailable} min</b> libres${proximaLinea?" antes de: "+proximaLinea:""}.</p>`
+      : `<p style="font-size:13px;color:var(--muted);margin:0 0 10px 0;">Tienes el resto del dia libre.</p>`;
   }
-  html += minutesAvailable!==null
-    ? `<p style="font-size:13px;color:var(--muted);margin:0 0 10px 0;">Tienes aproximadamente <b style="color:var(--text)">${minutesAvailable} min</b> disponibles${enTrabajo?" (estas en el trabajo)":""}.</p>`
-    : `<p style="font-size:13px;color:var(--muted);margin:0 0 10px 0;">Tienes el resto del dia libre.</p>`;
 
   if(primaria){
-    html += `<div class="reco-primary">${ATTN_EMOJI[primaria.attention]} ${primaria.icon} ${primaria.title} — ${primaria.duration} min</div>`;
+    html += `<div class="reco-primary">Podrias aprovechar para ${ATTN_EMOJI[primaria.attention]} ${primaria.icon} ${primaria.title} (~${primaria.duration} min).</div>`;
   }else{
-    html += `<div class="empty-state">No hay una recomendacion clara ahora mismo.</div>`;
+    html += `<div class="empty-state">Tambien puedes simplemente descansar.</div>`;
   }
   if(alternativas.length>0){
-    html += `<div style="font-size:12px;color:var(--muted);margin:10px 0 3px 0;">Tambien puedes:</div>` +
+    html += `<div style="font-size:12px;color:var(--muted);margin:10px 0 3px 0;">O si prefieres:</div>` +
       alternativas.map(a=>`<div class="reco-alt">${ATTN_EMOJI[a.attention]} ${a.icon} ${a.title} — ${a.duration} min</div>`).join("");
   }
-  if(noRecomendado.length>0){
-    html += `<div class="reco-warn">⚠️ No recomendado ahora: ${ATTN_EMOJI.alta} ${noRecomendado[0].title}${noRecomendado[0].materia?" ("+noRecomendado[0].materia+")":""}</div>`;
+  if(noRecomendado.length>0 && bajaTolerancia){
+    html += `<div class="reco-warn">Esto puede esperar: ${noRecomendado[0].title}${noRecomendado[0].materia?" ("+noRecomendado[0].materia+")":""} — necesita mas concentracion de la que puedes darle ahora.</div>`;
   }
   recoEl.innerHTML = html;
 }
@@ -412,8 +482,14 @@ async function loadHorario(){
   if(!data || data.length===0){ el.innerHTML = '<div class="empty-state">Aun no has agregado nada al horario.</div>'; return; }
   const orden = {lunes:1,martes:2,miercoles:3,jueves:4,viernes:5,sabado:6,domingo:7};
   const sorted = data.slice().sort((a,b)=> orden[a.day_of_week]-orden[b.day_of_week] || a.start_time.localeCompare(b.start_time));
-  el.innerHTML = `<table class="data-table"><tr><th>Dia</th><th>Hora</th><th>Actividad</th><th>Categoria</th><th></th></tr>` +
-    sorted.map(b=>`<tr><td>${cap(b.day_of_week)}</td><td class="num">${fmtHora(b.start_time)}-${fmtHora(b.end_time)}</td><td>${b.title}</td><td>${b.category}</td><td><button class="row-del" data-id="${b.id}">Eliminar</button></td></tr>`).join("") +
+  el.innerHTML = `<table class="data-table stack"><tr><th>Dia</th><th>Hora</th><th>Actividad</th><th>Categoria</th><th></th></tr>` +
+    sorted.map(b=>`<tr>
+      <td data-label="Dia">${cap(b.day_of_week)}</td>
+      <td class="num" data-label="Hora">${fmtHora(b.start_time)}-${fmtHora(b.end_time)}</td>
+      <td data-label="Actividad">${b.title}</td>
+      <td data-label="Categoria">${b.category}</td>
+      <td><button class="row-del" data-id="${b.id}">Eliminar</button></td>
+    </tr>`).join("") +
     `</table>`;
   el.querySelectorAll(".row-del").forEach(btn=>{
     btn.onclick = async ()=>{ await db.from("schedule_blocks").delete().eq("id", btn.dataset.id); loadHorario(); loadAhoraDespues(); };
@@ -428,7 +504,11 @@ document.getElementById("h-add").onclick = async ()=>{
   const title = document.getElementById("h-titulo").value.trim();
   const category = document.getElementById("h-categoria").value;
   if(!start_time || !end_time || !title) return;
-  await db.from("schedule_blocks").insert({ user_id: currentUser.id, day_of_week, start_time, end_time, title, category, mandatory:true });
+  const { error } = await db.from("schedule_blocks").upsert(
+    { user_id: currentUser.id, day_of_week, start_time, end_time, title, category, mandatory:true },
+    { onConflict: "user_id,day_of_week,start_time,end_time,title,category", ignoreDuplicates: true }
+  );
+  if(error){ alert("No se pudo agregar: " + error.message); return; }
   document.getElementById("h-titulo").value = "";
   loadHorario();
   loadAhoraDespues();
@@ -467,7 +547,10 @@ document.getElementById("btn-cargar-real").onclick = async ()=>{
 
   const btn = document.getElementById("btn-cargar-real");
   btn.disabled = true; btn.textContent = "Cargando...";
-  const { error } = await db.from("schedule_blocks").insert(bloques);
+  const { error } = await db.from("schedule_blocks").upsert(bloques, {
+    onConflict: "user_id,day_of_week,start_time,end_time,title,category",
+    ignoreDuplicates: true
+  });
   btn.disabled = false; btn.textContent = "Cargar mi horario real (universidad, trabajo, transporte)";
   if(error){ alert("No se pudo cargar: " + error.message); return; }
   loadHorario();
@@ -571,8 +654,13 @@ async function loadIngresos(){
   const { data, error } = await db.from("income").select("*").order("entry_date",{ascending:false});
   if(error || !data || data.length===0){ el.innerHTML = '<div class="empty-state">No hay ingresos registrados.</div>'; return; }
   const total = data.reduce((s,x)=>s+Number(x.amount||0),0);
-  el.innerHTML = `<table class="data-table"><tr><th>Fecha</th><th>Descripcion</th><th>Monto</th><th></th></tr>` +
-    data.map(i=>`<tr><td class="num">${i.entry_date}</td><td>${i.description||""}</td><td class="num">${money(i.amount)}</td><td><button class="row-del" data-id="${i.id}">Eliminar</button></td></tr>`).join("") +
+  el.innerHTML = `<table class="data-table stack"><tr><th>Fecha</th><th>Descripcion</th><th>Monto</th><th></th></tr>` +
+    data.map(i=>`<tr>
+      <td class="num" data-label="Fecha">${i.entry_date}</td>
+      <td data-label="Descripcion">${i.description||""}</td>
+      <td class="num" data-label="Monto">${money(i.amount)}</td>
+      <td><button class="row-del" data-id="${i.id}">Eliminar</button></td>
+    </tr>`).join("") +
     `</table><div class="stat-tile" style="--accent:var(--dinero);margin-top:12px;max-width:220px;"><div class="label">Total</div><div class="value">${money(total)}</div></div>`;
   el.querySelectorAll(".row-del").forEach(b=>b.onclick=async()=>{ await db.from("income").delete().eq("id",b.dataset.id); loadIngresos(); loadDinero(); });
 }
@@ -598,8 +686,14 @@ async function loadGastos(){
   const { data, error } = await db.from("expenses").select("*").order("entry_date",{ascending:false});
   if(error || !data || data.length===0){ el.innerHTML = '<div class="empty-state">No hay gastos registrados.</div>'; return; }
   const total = data.reduce((s,x)=>s+Number(x.amount||0),0);
-  el.innerHTML = `<table class="data-table"><tr><th>Fecha</th><th>Descripcion</th><th>Categoria</th><th>Monto</th><th></th></tr>` +
-    data.map(g=>`<tr><td class="num">${g.entry_date}</td><td>${g.description||""}</td><td>${g.category||""}</td><td class="num">${money(g.amount)}</td><td><button class="row-del" data-id="${g.id}">Eliminar</button></td></tr>`).join("") +
+  el.innerHTML = `<table class="data-table stack"><tr><th>Fecha</th><th>Descripcion</th><th>Categoria</th><th>Monto</th><th></th></tr>` +
+    data.map(g=>`<tr>
+      <td class="num" data-label="Fecha">${g.entry_date}</td>
+      <td data-label="Descripcion">${g.description||""}</td>
+      <td data-label="Categoria">${g.category||""}</td>
+      <td class="num" data-label="Monto">${money(g.amount)}</td>
+      <td><button class="row-del" data-id="${g.id}">Eliminar</button></td>
+    </tr>`).join("") +
     `</table><div class="stat-tile" style="--accent:var(--danger);margin-top:12px;max-width:220px;"><div class="label">Total gastado</div><div class="value">${money(total)}</div></div>`;
   el.querySelectorAll(".row-del").forEach(b=>b.onclick=async()=>{ await db.from("expenses").delete().eq("id",b.dataset.id); loadGastos(); loadDinero(); });
 }
@@ -857,17 +951,17 @@ async function loadTareasFull(){
     el.innerHTML = '<div class="empty-state">No hay tareas en esta vista. Sincroniza con Aula Extendida para traer las mas recientes.</div>';
     return;
   }
-  el.innerHTML = `<table class="data-table"><tr><th>Tarea</th><th>Materia</th><th>Entrega</th><th>Atencion</th><th>Estado</th><th></th></tr>` +
+  el.innerHTML = `<table class="data-table stack"><tr><th>Tarea</th><th>Materia</th><th>Entrega</th><th>Atencion</th><th>Estado</th><th></th></tr>` +
     filtradas.map(t=>{
       const vencida = t.due_date && t.due_date<hoy && t.status!=="completada";
       return `<tr style="${vencida?'color:var(--danger)':''}">
-        <td>${t.title}</td><td>${subMap[t.subject_id]||"-"}</td><td class="num">${t.due_date||""}</td>
-        <td><select data-id="${t.id}" class="ta-attn">
+        <td data-label="Tarea">${t.title}</td><td data-label="Materia">${subMap[t.subject_id]||"-"}</td><td class="num" data-label="Entrega">${t.due_date||""}</td>
+        <td data-label="Atencion"><select data-id="${t.id}" class="ta-attn">
           <option value="baja" ${t.attention_level==="baja"?"selected":""}>🟢 Baja</option>
           <option value="media" ${t.attention_level==="media"?"selected":""}>🟡 Media</option>
           <option value="alta" ${t.attention_level==="alta"?"selected":""}>🔴 Alta</option>
         </select></td>
-        <td><select data-id="${t.id}" class="ta-status">
+        <td data-label="Estado"><select data-id="${t.id}" class="ta-status">
           <option value="pendiente" ${t.status==="pendiente"?"selected":""}>Pendiente</option>
           <option value="en_progreso" ${t.status==="en_progreso"?"selected":""}>En progreso</option>
           <option value="completada" ${t.status==="completada"?"selected":""}>Completada</option>
