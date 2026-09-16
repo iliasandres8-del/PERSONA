@@ -7,6 +7,13 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="icon" type="image/png" sizes="32x32" href="assets/favicon-32.png">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#0A0D12">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Panel">
 <link rel="stylesheet" href="css/styles.css">
 </head>
 <body>
@@ -78,6 +85,10 @@
           <div class="eyebrow">Ahora</div>
           <div class="now-title" id="now-title">Cargando...</div>
           <div class="now-time" id="now-time"></div>
+          <div class="context-picker" id="context-picker">
+            <div class="context-label">¿Que haces?</div>
+            <div class="context-chips" id="context-chips"></div>
+          </div>
         </div>
 
         <div class="card" id="next-card">
@@ -85,31 +96,35 @@
           <div id="reco-content"></div>
         </div>
 
-        <div class="card" id="tasks-card">
-          <h2 style="--accent:var(--estudio)"><span class="swatch" style="--accent:var(--estudio)"></span>Tareas pendientes</h2>
-          <div id="tasks-list"></div>
-        </div>
+        <details class="resumen-details">
+          <summary>Ver resumen (tareas, dinero, entreno)</summary>
 
-        <div class="card" id="money-card">
-          <h2><span class="swatch" style="--accent:var(--dinero)"></span>Dinero</h2>
-          <div class="stat-grid">
-            <div class="stat-tile" style="--accent:var(--dinero)">
-              <div class="label">Saldo disponible</div>
-              <div class="value mono" id="money-balance">$0</div>
-            </div>
-            <div class="stat-tile" style="--accent:var(--dinero)">
-              <div class="label">Ahorrado</div>
-              <div class="value mono" id="money-saved">$0</div>
-            </div>
+          <div class="card" id="tasks-card">
+            <h2 style="--accent:var(--estudio)"><span class="swatch" style="--accent:var(--estudio)"></span>Tareas pendientes</h2>
+            <div id="tasks-list"></div>
           </div>
-          <div class="progress-track"><div class="progress-fill" id="goal-fill" style="--accent:var(--dinero);width:0%"></div></div>
-          <div class="empty-state" id="goal-empty" style="padding:8px 0 0 0;">Aun no defines una meta de ahorro.</div>
-        </div>
 
-        <div class="card" id="entreno-card">
-          <h2><span class="swatch" style="--accent:var(--entreno)"></span>Entreno</h2>
-          <div id="entreno-summary"></div>
-        </div>
+          <div class="card" id="money-card">
+            <h2><span class="swatch" style="--accent:var(--dinero)"></span>Dinero</h2>
+            <div class="stat-grid">
+              <div class="stat-tile" style="--accent:var(--dinero)">
+                <div class="label">Saldo disponible</div>
+                <div class="value mono" id="money-balance">$0</div>
+              </div>
+              <div class="stat-tile" style="--accent:var(--dinero)">
+                <div class="label">Ahorrado</div>
+                <div class="value mono" id="money-saved">$0</div>
+              </div>
+            </div>
+            <div class="progress-track"><div class="progress-fill" id="goal-fill" style="--accent:var(--dinero);width:0%"></div></div>
+            <div class="empty-state" id="goal-empty" style="padding:8px 0 0 0;">Aun no defines una meta de ahorro.</div>
+          </div>
+
+          <div class="card" id="entreno-card">
+            <h2><span class="swatch" style="--accent:var(--entreno)"></span>Entreno</h2>
+            <div id="entreno-summary"></div>
+          </div>
+        </details>
       </section>
 
       <!-- ---------- TIEMPO / DINERO / ESTUDIO / ENTRENO (fase 2: placeholders) ---------- -->
