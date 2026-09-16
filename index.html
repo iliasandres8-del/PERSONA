@@ -185,6 +185,7 @@
           <button data-sub="ingresos" class="sub-active">Ingresos</button>
           <button data-sub="gastos">Gastos</button>
           <button data-sub="ahorros">Ahorros</button>
+          <button data-sub="deudas">Deudas</button>
           <button data-sub="meta">Meta</button>
           <button data-sub="recurrentes">Recurrentes</button>
           <button data-sub="stats">Estadisticas</button>
@@ -193,6 +194,7 @@
         <div class="sub-panel" id="dsub-ingresos">
           <div class="card">
             <h2><span class="swatch" style="--accent:var(--dinero)"></span>Ingresos</h2>
+            <button class="btn" id="btn-hoy-trabaje" style="background:var(--dinero-soft);color:var(--dinero);margin-bottom:14px;">Hoy trabajé (+$60.000)</button>
             <div class="field-row-add">
               <input type="date" id="in-fecha">
               <input type="text" id="in-desc" placeholder="Descripcion">
@@ -227,6 +229,7 @@
         <div class="sub-panel" id="dsub-ahorros" hidden>
           <div class="card">
             <h2><span class="swatch" style="--accent:var(--dinero)"></span>Ahorros</h2>
+            <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px 0;">Lo que metas aqui se descuenta de tu saldo disponible.</p>
             <div class="field-row-add">
               <input type="date" id="ah-fecha">
               <input type="number" id="ah-monto" placeholder="Monto">
@@ -234,6 +237,20 @@
               <button class="btn primary" id="ah-add" style="background:var(--dinero);color:#08131A;">Agregar</button>
             </div>
             <div id="ahorros-list"></div>
+          </div>
+        </div>
+
+        <div class="sub-panel" id="dsub-deudas" hidden>
+          <div class="card">
+            <h2><span class="swatch" style="--accent:var(--danger)"></span>Deudas a pagar</h2>
+            <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px 0;">Al marcar una deuda como pagada, se descuenta de tu saldo del mes.</p>
+            <div class="field-row-add">
+              <input type="text" id="de-desc" placeholder="Descripcion (ej: celular)">
+              <input type="number" id="de-monto" placeholder="Monto">
+              <input type="date" id="de-fecha" placeholder="Fecha limite (opcional)">
+              <button class="btn primary" id="de-add" style="background:var(--danger);color:#fff;">Agregar</button>
+            </div>
+            <div id="deudas-list"></div>
           </div>
         </div>
 
@@ -298,12 +315,13 @@
         <div class="sub-panel" id="esub-tareas" hidden>
           <div class="card">
             <h2><span class="swatch" style="--accent:var(--estudio)"></span>Tareas</h2>
-            <div class="field-row-add">
-              <select id="ta-materia"></select>
-              <input type="text" id="ta-titulo" placeholder="Titulo">
-              <input type="date" id="ta-fecha">
-              <select id="ta-prioridad"><option value="media">Media</option><option value="alta">Alta</option><option value="baja">Baja</option></select>
-              <button class="btn primary" id="ta-add" style="background:var(--estudio);color:#0A0D12;">Agregar</button>
+            <p style="font-size:12.5px;color:var(--muted);margin:-6px 0 12px 0;">Tus tareas se traen automaticamente desde Aula Extendida.</p>
+            <div class="quick-actions" id="tareas-filtros" style="margin-bottom:14px;">
+              <button data-filter="todas" class="sub-active">Todas</button>
+              <button data-filter="pendiente">Pendientes</button>
+              <button data-filter="vencida">Vencidas</button>
+              <button data-filter="completada">Completadas</button>
+              <button id="ta-ir-sync" style="margin-left:auto;background:var(--estudio-soft);color:var(--estudio);">Sincronizar ahora</button>
             </div>
             <div id="tareas-full-list"></div>
           </div>
