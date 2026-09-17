@@ -130,11 +130,20 @@ const CTX_BAJA_TOLERANCIA = ["trabajo","clase"];
 
 async function setMiContexto(key){
   await db.from("user_context").upsert({ user_id: currentUser.id, context:key, updated_at:new Date().toISOString() }, { onConflict:"user_id" });
+  document.getElementById("context-chips").hidden = true;
   loadAhoraDespues();
 }
 
+document.getElementById("context-toggle").onclick = ()=>{
+  const chips = document.getElementById("context-chips");
+  chips.hidden = !chips.hidden;
+};
+
 function renderContextChips(activeKey){
   const el = document.getElementById("context-chips");
+  const cur = document.getElementById("context-current");
+  const activeCtx = CONTEXTS.find(c=>c.key===activeKey);
+  cur.textContent = activeCtx ? (activeCtx.icon+" "+activeCtx.label) : "Sin definir ›";
   el.innerHTML = CONTEXTS.map(c=>
     `<button data-ctx="${c.key}" class="${activeKey===c.key?'active':''}">${c.icon} ${c.label}</button>`
   ).join("");
@@ -238,12 +247,11 @@ async function loadAhoraDespues(){
     const attn = t.attention_level || "media";
     const dur = t.estimated_minutes || DEFAULT_DURATION[attn];
     const materiaNombre = subMap[t.subject_id];
-    const label = t.title + (materiaNombre ? " ("+materiaNombre+")" : "");
     if(attn==="alta" && (bajaTolerancia || (minutesAvailable!==null && minutesAvailable < dur))){
       noRecomendado.push({ title:t.title, materia:materiaNombre });
-      candidatos.push({ title:"Preparar: "+t.title, icon:"🗂️", attention:"baja", duration:Math.min(10, minutesAvailable||10), fuente:0 });
+      candidatos.push({ title:"Preparar: "+t.title, subtitle:materiaNombre, icon:"🗂️", attention:"baja", duration:Math.min(10, minutesAvailable||10), fuente:0 });
     }else{
-      candidatos.push({ title:"Avanzar: "+label, icon:"📚", attention:attn, duration:dur, fuente:0 });
+      candidatos.push({ title:t.title, subtitle:materiaNombre, icon:"📚", attention:attn, duration:dur, fuente:0 });
     }
   });
 
@@ -287,13 +295,18 @@ async function loadAhoraDespues(){
   }
 
   if(primaria){
-    html += `<div class="reco-primary">Podrias aprovechar para ${ATTN_EMOJI[primaria.attention]} ${primaria.icon} ${primaria.title} (~${primaria.duration} min).</div>`;
+    html += `<div style="font-size:12px;color:var(--muted);margin:0 0 3px 0;">Podrias:</div>`;
+    html += `<div class="reco-primary">
+      <div class="reco-row"><span>${ATTN_EMOJI[primaria.attention]}</span><span>${primaria.icon}</span><span>${primaria.title}</span></div>
+      ${primaria.subtitle ? `<div class="reco-sub">${primaria.subtitle}</div>` : ""}
+      <div class="reco-duration">~${primaria.duration} min</div>
+    </div>`;
   }else{
     html += `<div class="empty-state">Tambien puedes simplemente descansar.</div>`;
   }
   if(alternativas.length>0){
     html += `<div style="font-size:12px;color:var(--muted);margin:10px 0 3px 0;">O si prefieres:</div>` +
-      alternativas.map(a=>`<div class="reco-alt">${ATTN_EMOJI[a.attention]} ${a.icon} ${a.title} — ${a.duration} min</div>`).join("");
+      alternativas.map(a=>`<div class="reco-alt"><span class="reco-alt-title">${ATTN_EMOJI[a.attention]} ${a.icon} ${a.title}</span><span class="reco-alt-duration">${a.duration} min</span></div>`).join("");
   }
   if(noRecomendado.length>0 && bajaTolerancia){
     html += `<div class="reco-warn">Esto puede esperar: ${noRecomendado[0].title}${noRecomendado[0].materia?" ("+noRecomendado[0].materia+")":""} — necesita mas concentracion de la que puedes darle ahora.</div>`;
@@ -1189,17 +1202,18 @@ async function loadSync(){
     if(error || (data && data.error)){ resultEl.innerHTML = `<div class="empty-state">${(data&&data.error)||"No se pudo sincronizar."}</div>`; return; }
 
     const { data: subs } = await db.from("subjects").select("*");
-    const subByName = {}; (subs||[]).forEach(s=>subByName[s.name]=s.id);
+    const subByName = {}; (subs||[]).forEach(s=>subByName[s.name.trim().toLowerCase()]=s.id);
     const { data: existingTasks } = await db.from("tasks").select("title,due_date");
     const existingKeys = new Set((existingTasks||[]).map(t=>t.title+"|"+t.due_date));
 
     let creadas = 0;
     for(const t of (data.tasks||[])){
       if(!t.due_date) continue;
-      let subject_id = subByName[t.course_name];
+      const nameKey = (t.course_name||"").trim().toLowerCase();
+      let subject_id = subByName[nameKey];
       if(!subject_id){
         const { data: newSub } = await db.from("subjects").insert({ user_id: currentUser.id, name: t.course_name }).select();
-        if(newSub && newSub[0]){ subject_id = newSub[0].id; subByName[t.course_name] = subject_id; }
+        if(newSub && newSub[0]){ subject_id = newSub[0].id; subByName[nameKey] = subject_id; }
       }
       const key = t.title+"|"+t.due_date;
       if(existingKeys.has(key)) continue;
