@@ -1,0 +1,165 @@
+/* ==========================================================================
+   TOKENS — colores, tipografía y medidas. Todo lo demás usa estas variables.
+   Tema: por defecto sigue al sistema; Ajustes puede forzar claro u oscuro
+   con <html data-theme="light|dark">.
+   ========================================================================== */
+
+:root {
+  color-scheme: light;
+
+  /* Superficies y texto (claro) */
+  --bg: #F3F5F9;
+  --surface: #FFFFFF;
+  --surface-2: #F1F3F8;
+  --surface-3: #E7EBF2;
+  --border: #E1E5ED;
+  --border-strong: #CBD2DE;
+  --text: #10141B;
+  --muted: #566072;
+  --faint: #8290A3;
+
+  /* Un color por módulo */
+  --c-inicio: #4F46E5;
+  --c-tiempo: #0284C7;
+  --c-dinero: #059669;
+  --c-estudio: #7C3AED;
+  --c-entreno: #EA580C;
+  --on-accent: #FFFFFF;
+  --accent: var(--c-inicio);
+
+  /* Estados (nunca se usan como color de serie en gráficos) */
+  --danger: #DC2626;
+  --warn: #B45309;
+  --ok: #047857;
+  --info: #2563EB;
+
+  /* Gráficos: 2 primeras posiciones de la paleta categórica validada */
+  --series-1: #2A78D6;
+  --series-2: #EB6834;
+
+  /* Categorías del horario */
+  --cat-universidad: #8B5CF6;
+  --cat-trabajo: #D97706;
+  --cat-estudio: #7C3AED;
+  --cat-transporte: #64748B;
+  --cat-alimentacion: #16A34A;
+  --cat-sueno: #4F46E5;
+  --cat-gym: #EA580C;
+  --cat-futbol: #059669;
+  --cat-programacion: #0891B2;
+  --cat-recreacion: #DB2777;
+  --cat-descanso: #475569;
+  --cat-personal: #2563EB;
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 1px 2px rgba(16, 20, 27, .05), 0 6px 18px rgba(16, 20, 27, .06);
+  --shadow-lg: 0 10px 40px rgba(16, 20, 27, .18);
+
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-display: "Space Grotesk", "Inter", system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0B0E13;
+    --surface: #12161D;
+    --surface-2: #181D26;
+    --surface-3: #1F2530;
+    --border: #262D39;
+    --border-strong: #354052;
+    --text: #EAEDF2;
+    --muted: #98A1B0;
+    --faint: #6B7484;
+
+    --c-inicio: #818CF8;
+    --c-tiempo: #38BDF8;
+    --c-dinero: #34D399;
+    --c-estudio: #A78BFA;
+    --c-entreno: #FB923C;
+    --on-accent: #08131A;
+
+    --danger: #F87171;
+    --warn: #FBBF24;
+    --ok: #34D399;
+    --info: #60A5FA;
+
+    --series-1: #3987E5;
+    --series-2: #D95926;
+
+    --cat-universidad: #A78BFA;
+    --cat-trabajo: #F59E0B;
+    --cat-estudio: #8B5CF6;
+    --cat-transporte: #94A3B8;
+    --cat-alimentacion: #4ADE80;
+    --cat-sueno: #6366F1;
+    --cat-gym: #FB923C;
+    --cat-futbol: #10B981;
+    --cat-programacion: #22D3EE;
+    --cat-recreacion: #F472B6;
+    --cat-descanso: #64748B;
+    --cat-personal: #60A5FA;
+
+    --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px rgba(0, 0, 0, .25);
+    --shadow-lg: 0 10px 40px rgba(0, 0, 0, .55);
+  }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0B0E13;
+  --surface: #12161D;
+  --surface-2: #181D26;
+  --surface-3: #1F2530;
+  --border: #262D39;
+  --border-strong: #354052;
+  --text: #EAEDF2;
+  --muted: #98A1B0;
+  --faint: #6B7484;
+
+  --c-inicio: #818CF8;
+  --c-tiempo: #38BDF8;
+  --c-dinero: #34D399;
+  --c-estudio: #A78BFA;
+  --c-entreno: #FB923C;
+  --on-accent: #08131A;
+
+  --danger: #F87171;
+  --warn: #FBBF24;
+  --ok: #34D399;
+  --info: #60A5FA;
+
+  --series-1: #3987E5;
+  --series-2: #D95926;
+
+  --cat-universidad: #A78BFA;
+  --cat-trabajo: #F59E0B;
+  --cat-estudio: #8B5CF6;
+  --cat-transporte: #94A3B8;
+  --cat-alimentacion: #4ADE80;
+  --cat-sueno: #6366F1;
+  --cat-gym: #FB923C;
+  --cat-futbol: #10B981;
+  --cat-programacion: #22D3EE;
+  --cat-recreacion: #F472B6;
+  --cat-descanso: #64748B;
+  --cat-personal: #60A5FA;
+
+  --shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px rgba(0, 0, 0, .25);
+  --shadow-lg: 0 10px 40px rgba(0, 0, 0, .55);
+}
+
+/* Clases de categoría: definen --cat para bloques, agenda, etc. */
+.cat-universidad { --cat: var(--cat-universidad); }
+.cat-trabajo { --cat: var(--cat-trabajo); }
+.cat-estudio { --cat: var(--cat-estudio); }
+.cat-transporte { --cat: var(--cat-transporte); }
+.cat-alimentacion { --cat: var(--cat-alimentacion); }
+.cat-sueno { --cat: var(--cat-sueno); }
+.cat-gym { --cat: var(--cat-gym); }
+.cat-futbol { --cat: var(--cat-futbol); }
+.cat-programacion { --cat: var(--cat-programacion); }
+.cat-recreacion { --cat: var(--cat-recreacion); }
+.cat-descanso { --cat: var(--cat-descanso); }
+.cat-personal { --cat: var(--cat-personal); }
