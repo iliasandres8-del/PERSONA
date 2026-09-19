@@ -61,6 +61,10 @@
 .agenda-main { display: flex; flex-direction: column; min-width: 0; }
 .agenda-main b { font-size: 14px; overflow-wrap: anywhere; }
 .agenda-main small { color: var(--muted); font-size: 12px; }
+.agenda-side { display: flex; align-items: center; gap: 6px; padding-top: 1px; }
+.agenda-item.cancelled .agenda-main b { text-decoration: line-through; color: var(--muted); font-weight: 500; }
+.agenda-item.cancelled .agenda-time, .agenda-item.cancelled .agenda-dot { opacity: .45; }
+.agenda-item.cancelled .agenda-main small { color: var(--ok); }
 .agenda-item.past { opacity: .5; }
 .agenda-item.now .agenda-main b { color: var(--text); }
 .agenda-item.now .agenda-dot { box-shadow: 0 0 0 4px color-mix(in srgb, var(--cat, var(--accent)) 28%, transparent); }
@@ -94,6 +98,12 @@
 .tblock small { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .tblock.small { flex-direction: row; align-items: center; padding: 0 6px; font-size: 11px; }
 .tblock:hover { filter: brightness(1.1); z-index: 2; }
+/* Bloque cancelado: atenuado, con borde punteado y título tachado */
+.tblock.cancelled {
+  opacity: .5; border-left-style: dashed;
+  background: repeating-linear-gradient(135deg, transparent 0 6px, color-mix(in srgb, var(--cat, var(--accent)) 14%, transparent) 6px 12px), color-mix(in srgb, var(--cat, var(--accent)) 8%, var(--surface));
+}
+.tblock.cancelled b { text-decoration: line-through; }
 .now-line { position: absolute; left: -4px; right: 0; height: 2px; background: var(--danger); z-index: 3; }
 .now-line::before { content: ""; position: absolute; left: -2px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--danger); }
 @media (min-width: 900px) {
@@ -102,6 +112,13 @@
   .week-grid .day-col { display: block; }
   .tblock { font-size: 12px; }
 }
+
+/* ---------- Clases canceladas ---------- */
+.cancel-notes { display: flex; flex-direction: column; gap: 10px; margin-bottom: 14px; }
+.cancel-notes .callout { margin-top: 0; }
+.callout p .link-btn { margin-left: 4px; }
+.cancel-note { display: flex; align-items: flex-start; gap: 8px; margin-top: 8px; padding: 9px 12px; border-radius: 12px; font-size: 13px; background: color-mix(in srgb, var(--ok) 11%, transparent); }
+.cancel-note .ic { width: 16px; height: 16px; margin-top: 2px; color: var(--ok); }
 
 /* ---------- Planificador ---------- */
 .plan-day { padding: 12px 0; border-bottom: 1px solid var(--border); }

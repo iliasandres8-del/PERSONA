@@ -78,6 +78,27 @@ ok("sugiere el entreno de hoy si no entrenaste", [a.primary, ...a.alts].some((x)
 a = R.analyze({ ...base, routines, sessions: [{ session_date: "2026-09-22" }] }, martes(11, 0));
 ok("no lo sugiere si ya entrenaste", ![a.primary, ...a.alts].some((x) => x && x.kind === "workout"));
 
+// ----- clases canceladas: esa franja cuenta como tiempo libre -----
+const claseMartes = blocks.find((b) => b.day_of_week === "martes" && b.title === "Estructura de Datos"); // 07:00-09:00
+const cancelledSet = new Set([`${claseMartes.id}|2026-09-22`]);
+ok("blocksOf omite el bloque cancelado ese día", !R.blocksOf(blocks, "martes", cancelledSet, "2026-09-22").some((b) => b.id === claseMartes.id));
+ok("blocksOf lo conserva otro martes", R.blocksOf(blocks, "martes", cancelledSet, "2026-09-29").some((b) => b.id === claseMartes.id));
+ok("blocksOf sin cancelaciones no cambia nada", R.blocksOf(blocks, "martes").some((b) => b.id === claseMartes.id));
+a = R.analyze({ ...base, cancelled: cancelledSet }, martes(8, 0));
+ok("clase cancelada: ya no es 'clase' ni baja tolerancia", a.actual === null && a.ctxKey !== "clase" && a.mode !== "baja", `${a.mode}/${a.ctxKey}`);
+ok("clase cancelada: hay sugerencia con tiempo de sobra", a.mode === "normal" && !!a.primary && a.windowMin > 60, `${a.mode} ${a.windowMin}`);
+ok("clase cancelada: se reporta como cancelada hoy", a.cancelledToday.length === 1 && a.cancelledToday[0].id === claseMartes.id);
+a = R.analyze({ ...base, cancelled: cancelledSet }, at(2026, 9, 29, 8, 0)); // martes de la semana siguiente
+ok("la semana siguiente la clase sigue igual", a.ctxKey === "clase" && a.cancelledToday.length === 0);
+const gapsCancel = R.dayGaps(blocks, "martes", { min: 45, cancelled: cancelledSet, date: "2026-09-22" });
+const gapsNormal = R.dayGaps(blocks, "martes", { min: 45 });
+const libre = (g) => g.reduce((s, [x, y]) => s + (y - x), 0);
+// La clase (07:00-09:00) solapa 15 min con el transporte (06:00-07:15), que sigue ocupado: se liberan 07:15-09:00.
+ok("los huecos suman la franja cancelada que no solapa otro bloque (105 min)", libre(gapsCancel) - libre(gapsNormal) === 105, `${libre(gapsCancel)} vs ${libre(gapsNormal)}`);
+const mieClase = blocks.find((b) => b.day_of_week === "miercoles" && b.title === "Bases de Datos"); // 13:00-16:00
+const nxCancel = R.nextBlock(blocks, martes(23, 59), null, new Set([`${mieClase.id}|2026-09-23`]));
+ok("próximo bloque salta la clase cancelada de mañana", nxCancel && nxCancel.block.id !== mieClase.id, nxCancel && nxCancel.block.title);
+
 // ----- pintar resultados -----
 const failed = results.filter((r) => !r.pass);
 document.getElementById("summary").textContent = failed.length ? `${failed.length} de ${results.length} pruebas fallan` : `Las ${results.length} pruebas pasan ✓`;

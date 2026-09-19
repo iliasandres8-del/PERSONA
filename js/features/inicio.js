@@ -1,6 +1,7 @@
 // INICIO: responde "¿qué debería estar haciendo ahora?" cruzando horario, tareas, dinero y entreno.
-import { html, dateKey, fmtDuration, hhmm, relDate, money, nowMinutes } from "../core/utils.js";
+import { html, dateKey, fmtDuration, hhmm, relDate, money, nowMinutes, minutesOf } from "../core/utils.js";
 import { rows, upsert } from "../core/store.js";
+import { cancelledSet } from "../core/cancellations.js";
 import { onActs } from "../core/actions.js";
 import { view } from "../core/view.js";
 import { analyze, contextLabel } from "../core/recommend.js";
@@ -105,7 +106,18 @@ function recoCard(a) {
         ? html`<div class="callout warn">Esto puede esperar: <b>${a.postponed[0].title}</b>${a.postponed[0].materia ? ` (${a.postponed[0].materia})` : ""}. Necesita más concentración de la que puedes darle ahora.</div>`
         : ""}`;
   }
-  return html`<section class="card reco-card o2"><header class="card-head"><h2>${icon("bolt")}Qué hacer ahora</h2></header>${body}</section>`;
+  // Clases canceladas hoy que aún no terminan: se avisa cuánto tiempo libre se ganó
+  const nowMin = nowMinutes(new Date());
+  const today = dateKey();
+  const freed = a.cancelledToday.filter((b) => minutesOf(b.end_time) > nowMin);
+  const cancelNotes = freed.length
+    ? html`<div class="cancel-notes">${freed.map(
+        (b) => html`<div class="callout ok"><b>Se canceló ${b.title}</b>
+          <p>${hhmm(b.start_time)}–${hhmm(b.end_time)} · ganaste ${fmtDuration(minutesOf(b.end_time) - Math.max(minutesOf(b.start_time), nowMin))} libres.
+            <button class="link-btn" type="button" data-act="block.restore" data-id="${b.id}" data-date="${today}">Restaurar</button></p></div>`
+      )}</div>`
+    : "";
+  return html`<section class="card reco-card o2"><header class="card-head"><h2>${icon("bolt")}Qué hacer ahora</h2></header>${cancelNotes}${body}</section>`;
 }
 
 function kpis() {
@@ -146,10 +158,11 @@ function tasksCard() {
 
 function agendaCard(a) {
   const now = new Date();
+  // Aquí van todos los bloques de hoy, también los cancelados (tachados, con opción de restaurar)
   const blocks = rows("schedule_blocks").filter((b) => b.day_of_week === a.dayKey).sort((x, y) => x.start_time.localeCompare(y.start_time));
   return html`<section class="card o5">
     <header class="card-head"><h2>Tu día</h2><a class="btn sm ghost" href="#/tiempo/semana">Ver semana</a></header>
-    ${agenda(blocks, nowMinutes(now), { empty: "No tienes bloques agendados hoy." })}
+    ${agenda(blocks, nowMinutes(now), { empty: "No tienes bloques agendados hoy.", cancelled: cancelledSet(), date: dateKey(now) })}
   </section>`;
 }
 
@@ -186,11 +199,12 @@ function aulaBanner() {
 
 export default {
   id: "inicio", label: "Inicio", icon: "home", accent: "inicio", subs: null,
-  tables: ["schedule_blocks", "subjects", "tasks", "income", "expenses", "savings", "financial_goals", "workout_routines", "workout_exercises", "workout_sessions", "user_context", "reminders"],
+  tables: ["schedule_blocks", "schedule_exceptions", "subjects", "tasks", "income", "expenses", "savings", "financial_goals", "workout_routines", "workout_exercises", "workout_sessions", "user_context", "reminders"],
   render() {
     const a = analyze({
       blocks: rows("schedule_blocks"), subjects: rows("subjects"), tasks: rows("tasks"),
-      routines: rows("workout_routines"), sessions: rows("workout_sessions"), manualContext: manualContext()
+      routines: rows("workout_routines"), sessions: rows("workout_sessions"), manualContext: manualContext(),
+      cancelled: cancelledSet()
     });
     return html`<div class="home">
       ${aulaBanner()}

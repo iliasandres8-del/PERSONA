@@ -1,9 +1,9 @@
 // TIEMPO: horario semanal visual, planificador de huecos libres, actividades y registro de tiempo libre.
 import {
   html, dayKeyOf, dateKey, nowMinutes, SEMANA, DIA_LABEL, DIA_CORTO, addDays, minToHHMM, minutesOf,
-  hhmm, fmtDuration, fmtDateShort, relDate, sum
+  hhmm, fmtDuration, fmtDateShort, relDate, sum, parseDate
 } from "../core/utils.js";
-import { rows, update, upsert } from "../core/store.js";
+import { rows, update, upsert, findById, load, emit } from "../core/store.js";
 import { onActs } from "../core/actions.js";
 import { view } from "../core/view.js";
 import { icon } from "../ui/icons.js";
@@ -11,7 +11,8 @@ import { defineCrud, emptyState, openEdit, askDelete } from "../ui/crud.js";
 import { openSheet, closeSheet } from "../ui/modal.js";
 import { toast } from "../ui/toast.js";
 import { weekGrid } from "../ui/timeline.js";
-import { dayGaps } from "../core/recommend.js";
+import { dayGaps, blocksOf } from "../core/recommend.js";
+import { cancelledSet, cancelDateFor, upcomingCancellation, exceptionDate, cancelBlock, restoreBlock } from "../core/cancellations.js";
 import { CATEGORIAS, CAT_LABEL, DEFAULT_SCHEDULE, DEFAULT_DURATION } from "../data/defaults.js";
 
 let weekDay = dayKeyOf();
@@ -42,7 +43,9 @@ export const bloques = defineCrud({
     return v.days.map((day_of_week) => ({ ...base, day_of_week, mandatory: true }));
   },
   create: (payload) => upsert("schedule_blocks", payload, { onConflict: CONFLICT, ignoreDuplicates: true }),
-  deleteMessage: (b) => `Se eliminará "${b.title}" del ${DIA_LABEL[b.day_of_week] || b.day_of_week}.`
+  deleteMessage: (b) => `Se eliminará "${b.title}" del ${DIA_LABEL[b.day_of_week] || b.day_of_week}.`,
+  // Las cancelaciones de ese bloque se borran en cascada en la base: se recarga la tabla.
+  afterDelete: () => load("schedule_exceptions", { silent: true }).then(() => emit(["schedule_exceptions"]))
 });
 
 // ---------- Actividades ----------
@@ -81,12 +84,16 @@ function buildPlan() {
   const blocks = rows("schedule_blocks");
   const now = new Date();
   const today = dateKey(now);
+  const cancelled = cancelledSet();
   const days = [];
   for (let i = 0; i < 7; i++) {
     const d = addDays(now, i);
     const key = dayKeyOf(d);
-    const gaps = dayGaps(blocks, key, { after: i === 0 ? nowMinutes(now) : 0, min: 30 }).map(([s, e]) => ({ s, e, cursor: s, placed: [] }));
-    days.push({ date: dateKey(d), key, label: i === 0 ? "Hoy" : i === 1 ? "Mañana" : DIA_LABEL[key], gaps });
+    const date = dateKey(d);
+    // Las clases canceladas ese día no ocupan tiempo: su franja entra como hueco libre.
+    const gaps = dayGaps(blocks, key, { after: i === 0 ? nowMinutes(now) : 0, min: 30, cancelled, date }).map(([s, e]) => ({ s, e, cursor: s, placed: [] }));
+    const cancelledBlocks = blocksOf(blocks, key).filter((b) => cancelled.has(`${b.id}|${date}`));
+    days.push({ date, key, label: i === 0 ? "Hoy" : i === 1 ? "Mañana" : DIA_LABEL[key], gaps, cancelledBlocks });
   }
   const freeTotal = sum(days.flatMap((d) => d.gaps), (g) => g.e - g.s);
 
@@ -129,6 +136,9 @@ function planView() {
       ${days.map(
         (d) => html`<div class="plan-day">
           <h3>${d.label} <small>${fmtDateShort(d.date)}</small></h3>
+          ${d.cancelledBlocks.map(
+            (b) => html`<p class="cancel-note">${icon("check")}<span>Cancelada: <b>${b.title}</b> (${hhmm(b.start_time)}–${hhmm(b.end_time)}). Ese tiempo ya cuenta como libre.</span></p>`
+          )}
           ${d.gaps.length
             ? d.gaps.map(
                 (g) => html`<div class="gap">
@@ -152,6 +162,7 @@ function semanaView() {
   const blocks = rows("schedule_blocks");
   const now = new Date();
   const empty = !blocks.length;
+  const cancelledIds = new Set(blocks.filter((b) => upcomingCancellation(b.id, now)).map((b) => b.id));
   return html`
     <section class="card">
       <header class="card-head">
@@ -163,7 +174,7 @@ function semanaView() {
       </header>
       ${empty
         ? emptyState({ title: "Aún no tienes horario", text: "Carga tu horario base de un toque o agrega bloques uno a uno." })
-        : weekGrid({ blocks, selectedDay: weekDay, todayKey: dayKeyOf(now), nowMin: nowMinutes(now) })}
+        : weekGrid({ blocks, selectedDay: weekDay, todayKey: dayKeyOf(now), nowMin: nowMinutes(now), cancelledIds })}
     </section>`;
 }
 
@@ -188,7 +199,7 @@ function libreView() {
 export default {
   id: "tiempo", label: "Tiempo", icon: "clock", accent: "tiempo",
   subs: [["semana", "Semana"], ["plan", "Planificador"], ["actividades", "Actividades"], ["libre", "Tiempo libre"]],
-  tables: ["schedule_blocks", "activities", "free_time_logs", "tasks"],
+  tables: ["schedule_blocks", "schedule_exceptions", "activities", "free_time_logs", "tasks"],
   render(sub) {
     if (sub === "plan") return planView();
     if (sub === "actividades") return actividadesView();
@@ -196,6 +207,21 @@ export default {
     return semanaView();
   }
 };
+
+// ---------- Cancelar / restaurar ----------
+function whenLabel(date) {
+  const today = dateKey();
+  if (date === today) return "hoy";
+  if (date === dateKey(addDays(new Date(), 1))) return "mañana";
+  return `${DIA_LABEL[dayKeyOf(parseDate(date))]} ${fmtDateShort(date)}`;
+}
+
+async function doCancel(block, date) {
+  if (await cancelBlock(block, date)) toast(`Cancelada (${whenLabel(date)}). Esa franja quedó libre ✓`);
+}
+async function doRestore(block, date) {
+  if (await restoreBlock(block, date)) toast("Clase restaurada");
+}
 
 // ---------- Acciones ----------
 onActs({
@@ -207,10 +233,18 @@ onActs({
   "block.edit": (el) => {
     const b = rows("schedule_blocks").find((x) => x.id === el.dataset.id);
     if (!b) return;
+    const ex = upcomingCancellation(b.id);
+    const target = ex ? exceptionDate(ex) : cancelDateFor(b);
+    const when = whenLabel(target);
     openSheet(
       html`<h3 class="sheet-title">${b.title}</h3>
         <p class="sheet-text">${DIA_LABEL[b.day_of_week]} · ${hhmm(b.start_time)}–${hhmm(b.end_time)} · ${CAT_LABEL[b.category] || b.category}</p>
         ${b.notes ? html`<p class="sheet-text muted">${b.notes}</p>` : ""}
+        ${ex
+          ? html`<div class="callout ok"><b>Cancelada: ${when}</b><p>Esa franja cuenta como tiempo libre. El resto de semanas sigue igual.</p></div>
+              <button class="btn block" type="button" data-b="restore">${icon("refresh")}<span>Restaurar (no se canceló)</span></button>`
+          : html`<button class="btn block" type="button" data-b="cancel">${icon("x")}<span>Se canceló · ${when}</span></button>
+              <p class="hint">Solo afecta esa fecha: el horario de las demás semanas no cambia.</p>`}
         <div class="sheet-actions">
           <button class="btn danger" type="button" data-b="del">${icon("trash")}Eliminar</button>
           <button class="btn primary" type="button" data-b="edit">${icon("edit")}Editar</button>
@@ -221,9 +255,22 @@ onActs({
         onMount: (s) => {
           s.querySelector("[data-b=edit]").onclick = () => { closeSheet(true); openEdit("bloques", b.id); };
           s.querySelector("[data-b=del]").onclick = () => { closeSheet(true); askDelete("bloques", b.id); };
+          const cancel = s.querySelector("[data-b=cancel]");
+          if (cancel) cancel.onclick = async () => { closeSheet(true); await doCancel(b, target); };
+          const restore = s.querySelector("[data-b=restore]");
+          if (restore) restore.onclick = async () => { closeSheet(true); await doRestore(b, target); };
         }
       }
     );
+  },
+  // Desde la agenda de Inicio: data-date es la fecha de hoy
+  "block.cancel": (el) => {
+    const b = findById("schedule_blocks", el.dataset.id);
+    if (b) doCancel(b, el.dataset.date || cancelDateFor(b));
+  },
+  "block.restore": (el) => {
+    const b = findById("schedule_blocks", el.dataset.id);
+    if (b) doRestore(b, el.dataset.date);
   },
   "schedule.seed": async () => {
     const ok = await upsert("schedule_blocks", DEFAULT_SCHEDULE.map((b) => ({ ...b, mandatory: true })), { onConflict: CONFLICT, ignoreDuplicates: true });

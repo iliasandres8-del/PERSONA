@@ -1,6 +1,6 @@
 // Motor de "¿qué debería estar haciendo ahora?". Son funciones puras (reciben datos y
 // devuelven un resultado) para poder probarlas sin pantalla ni base de datos.
-import { minutesOf, dayKeyOf, dateKey, daysBetween, SEMANA, DIA_LABEL, nowMinutes } from "./utils.js";
+import { minutesOf, dayKeyOf, dateKey, daysBetween, addDays, SEMANA, DIA_LABEL, nowMinutes } from "./utils.js";
 import {
   GENERIC_ACTIVITIES, DEFAULT_DURATION, CTX_SIN_NAG, CTX_ENFOCADO,
   CTX_BAJA_TOLERANCIA, CATEGORY_TO_CTX, CONTEXTS
@@ -8,9 +8,12 @@ import {
 
 const byStart = (a, b) => minutesOf(a.start_time) - minutesOf(b.start_time);
 
-// Bloques del día ordenados por hora.
-export function blocksOf(blocks, dayKey) {
-  return (blocks || []).filter((b) => b.day_of_week === dayKey).sort(byStart);
+// Bloques del día ordenados por hora. Si se pasan `cancelled` (Set de "idBloque|fecha") y la
+// fecha concreta, se omiten los bloques cancelados ese día: esa franja cuenta como tiempo libre.
+export function blocksOf(blocks, dayKey, cancelled = null, date = null) {
+  return (blocks || [])
+    .filter((b) => b.day_of_week === dayKey && !(cancelled && date && cancelled.has(`${b.id}|${date}`)))
+    .sort(byStart);
 }
 
 // Si hay bloques solapados (p. ej. "moto" dentro de "Trabajo"), gana el más específico:
@@ -25,25 +28,25 @@ export function currentBlock(dayBlocks, nowMin) {
 }
 
 // Próximo bloque: hoy si queda alguno, si no el primero de los siguientes 7 días.
-export function nextBlock(blocks, now = new Date(), exclude = null) {
+export function nextBlock(blocks, now = new Date(), exclude = null, cancelled = null) {
   const nowMin = nowMinutes(now);
   const dayKey = dayKeyOf(now);
-  const today = blocksOf(blocks, dayKey).filter((b) => minutesOf(b.start_time) > nowMin && b !== exclude);
+  const today = blocksOf(blocks, dayKey, cancelled, dateKey(now)).filter((b) => minutesOf(b.start_time) > nowMin && b !== exclude);
   if (today.length) {
     return { block: today[0], dayLabel: null, minutesUntil: minutesOf(today[0].start_time) - nowMin };
   }
   const idx = SEMANA.indexOf(dayKey);
   for (let i = 1; i <= 7; i++) {
     const key = SEMANA[(idx + i) % 7];
-    const list = blocksOf(blocks, key);
+    const list = blocksOf(blocks, key, cancelled, dateKey(addDays(now, i)));
     if (list.length) return { block: list[0], dayLabel: i === 1 ? "Mañana" : DIA_LABEL[key], minutesUntil: null };
   }
   return null;
 }
 
 // Huecos libres de un día (entre bloques) dentro de una ventana de vigilia.
-export function dayGaps(blocks, dayKey, { from = 6 * 60, to = 22 * 60 + 30, min = 45, after = 0 } = {}) {
-  const busy = blocksOf(blocks, dayKey)
+export function dayGaps(blocks, dayKey, { from = 6 * 60, to = 22 * 60 + 30, min = 45, after = 0, cancelled = null, date = null } = {}) {
+  const busy = blocksOf(blocks, dayKey, cancelled, date)
     .map((b) => [minutesOf(b.start_time), minutesOf(b.end_time)])
     .sort((a, b) => a[0] - b[0]);
   const gaps = [];
@@ -63,16 +66,18 @@ export function contextLabel(key) {
 }
 
 // ---------- Análisis principal ----------
-// data: { blocks, subjects, tasks, routines, sessions, manualContext }
+// data: { blocks, subjects, tasks, routines, sessions, manualContext, cancelled }
+// cancelled: Set de "idBloque|fecha" con las clases/bloques cancelados; cuentan como tiempo libre.
 export function analyze(data, now = new Date()) {
-  const { blocks = [], subjects = [], tasks = [], routines = [], sessions = [], manualContext = null } = data;
+  const { blocks = [], subjects = [], tasks = [], routines = [], sessions = [], manualContext = null, cancelled = null } = data;
   const dayKey = dayKeyOf(now);
   const today = dateKey(now);
   const nowMin = nowMinutes(now);
 
-  const dayBlocks = blocksOf(blocks, dayKey);
+  const dayBlocks = blocksOf(blocks, dayKey, cancelled, today);
+  const cancelledToday = cancelled ? blocksOf(blocks, dayKey).filter((b) => cancelled.has(`${b.id}|${today}`)) : [];
   const actual = currentBlock(dayBlocks, nowMin);
-  const next = nextBlock(blocks, now, actual);
+  const next = nextBlock(blocks, now, actual, cancelled);
 
   let progress = null;
   if (actual) {
@@ -89,7 +94,7 @@ export function analyze(data, now = new Date()) {
   const enfocado = !sinNag && CTX_ENFOCADO.includes(ctxKey);
   const bajaTolerancia = !sinNag && !enfocado && CTX_BAJA_TOLERANCIA.includes(ctxKey);
 
-  const base = { dayKey, actual, progress, next, windowMin, ctxKey, manualContext, guess, primary: null, alts: [], postponed: [] };
+  const base = { dayKey, actual, progress, next, windowMin, ctxKey, manualContext, guess, cancelledToday, primary: null, alts: [], postponed: [] };
 
   if (sinNag) return { ...base, mode: "sinNag" };
   if (enfocado) return { ...base, mode: "enfocado" };
