@@ -11,6 +11,10 @@ tus tareas más urgentes, saldo, racha de entreno, tu día en agenda y aviso si 
 **Tiempo**: horario semanal visual (bloques posicionados por hora, con los solapados en carriles), planificador que reparte tus tareas y actividades en los huecos libres,
 actividades y registro de tiempo libre. Puedes agregar un bloque en varios días a la vez.
 
+**Clases canceladas**: si cancelan una clase, márcala con **"Se canceló"** (en la agenda de Inicio o tocando el bloque en la semana). Solo afecta esa fecha:
+la franja pasa a contar como tiempo libre, "qué hacer ahora" te sugiere cosas con ese tiempo, el planificador lo suma a tus huecos y el resto de semanas queda igual.
+Se puede deshacer con **Restaurar**.
+
 **Dinero**: resumen mensual con gráfico de 6 meses (ingresos vs. gastos) y gastos por categoría, movimientos agrupados por día, meta de ahorro con cuánto ahorrar por semana,
 deudas (al pagarlas se registran como gasto) y gastos fijos con próximo pago.
 
@@ -55,6 +59,7 @@ js/
   ui/                   componentes: crud, form, modal, toast, charts, timeline, icons
   features/             una pantalla por archivo: inicio, tiempo, dinero, estudio, entreno, ajustes, focus, auth
   data/defaults.js      lo "tuyo": horario base, categorías, actividades sugeridas, contextos
+db/                     SQL de las tablas que se agregaron después (ya aplicado en Supabase)
 tests/unit.html         pruebas de la lógica (abrir por http, ver arriba)
 ```
 
@@ -67,9 +72,9 @@ tests/unit.html         pruebas de la lógica (abrir por http, ver arriba)
 
 ## Base de datos
 
-Proyecto Supabase `panel-personal`. Esta versión **no cambia el esquema**: usa las mismas tablas de antes
-(`schedule_blocks`, `activities`, `free_time_logs`, `subjects`, `tasks`, `income`, `expenses`, `savings`, `debts`, `financial_goals`,
-`recurring_expenses`, `workout_routines`, `workout_exercises`, `workout_sessions`, `reminders`, `user_context`, `integrations`).
+Proyecto Supabase `panel-personal`. Tablas: `schedule_blocks`, `schedule_exceptions` (clases canceladas, ver `db/schedule_exceptions.sql`),
+`activities`, `free_time_logs`, `subjects`, `tasks`, `income`, `expenses`, `savings`, `debts`, `financial_goals`,
+`recurring_expenses`, `workout_routines`, `workout_exercises`, `workout_sessions`, `reminders`, `user_context`, `integrations`.
 Todas con Row Level Security: cada usuario solo ve sus datos.
 
 ## Seguridad

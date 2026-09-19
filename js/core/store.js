@@ -7,7 +7,7 @@ import { toast } from "../ui/toast.js";
 export const state = { user: null, data: {}, errors: {} };
 
 export const TABLES = [
-  "schedule_blocks", "activities", "free_time_logs", "subjects", "tasks",
+  "schedule_blocks", "schedule_exceptions", "activities", "free_time_logs", "subjects", "tasks",
   "income", "expenses", "savings", "debts", "financial_goals", "recurring_expenses",
   "workout_routines", "workout_exercises", "workout_sessions",
   "reminders", "user_context", "integrations"

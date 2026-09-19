@@ -4,19 +4,29 @@ import { CAT_LABEL } from "../data/defaults.js";
 import { blocksOf } from "../core/recommend.js";
 
 // ---------- Agenda del día ----------
-export function agenda(blocks, nowMin, { empty = "No tienes nada agendado hoy." } = {}) {
+// cancelled (Set "idBloque|fecha") + date: los bloques cancelados ese día se muestran tachados
+// con opción de restaurarlos; los que aún no pasaron ofrecen "Se canceló".
+export function agenda(blocks, nowMin, { empty = "No tienes nada agendado hoy.", cancelled = null, date = "" } = {}) {
   if (!blocks.length) return html`<div class="empty small">${empty}</div>`;
   return html`<ol class="agenda">${blocks.map((b) => {
     const s = minutesOf(b.start_time), e = minutesOf(b.end_time);
-    const state = nowMin >= e ? "past" : nowMin >= s ? "now" : "future";
+    const isCancelled = !!cancelled && cancelled.has(`${b.id}|${date}`);
+    const state = isCancelled ? "cancelled" : nowMin >= e ? "past" : nowMin >= s ? "now" : "future";
     return html`<li class="agenda-item ${state} cat-${b.category}">
       <span class="agenda-time">${hhmm(b.start_time)}</span>
       <span class="agenda-dot"></span>
       <span class="agenda-main">
         <b>${b.title}</b>
-        <small>${CAT_LABEL[b.category] || b.category} · hasta ${hhmm(b.end_time)}</small>
+        <small>${isCancelled ? "Cancelada · esa franja quedó libre" : html`${CAT_LABEL[b.category] || b.category} · hasta ${hhmm(b.end_time)}`}</small>
       </span>
-      ${state === "now" ? html`<span class="pill now-pill">Ahora</span>` : ""}
+      <span class="agenda-side">
+        ${state === "now" ? html`<span class="pill now-pill">Ahora</span>` : ""}
+        ${isCancelled
+          ? html`<button class="link-btn" type="button" data-act="block.restore" data-id="${b.id}" data-date="${date}">Restaurar</button>`
+          : state !== "past"
+            ? html`<button class="link-btn" type="button" data-act="block.cancel" data-id="${b.id}" data-date="${date}" aria-label="Se canceló ${b.title}">Se canceló</button>`
+            : ""}
+      </span>
     </li>`;
   })}</ol>`;
 }
@@ -54,7 +64,8 @@ function layoutLanes(list) {
   return out;
 }
 
-export function weekGrid({ blocks, selectedDay, todayKey, nowMin }) {
+// cancelledIds: Set de ids de bloque con una cancelación vigente (se dibujan atenuados y tachados)
+export function weekGrid({ blocks, selectedDay, todayKey, nowMin, cancelledIds = new Set() }) {
   const totalH = (H_TO - H_FROM) * 60 * PX_PER_MIN;
   const hours = [];
   for (let h = H_FROM; h < H_TO; h++) hours.push(h);
@@ -71,7 +82,7 @@ export function weekGrid({ blocks, selectedDay, todayKey, nowMin }) {
           const top = Math.max(0, (s - H_FROM * 60) * PX_PER_MIN);
           const h = Math.max(16, (e - s) * PX_PER_MIN - 2);
           const small = h < 34;
-          return html`<button class="tblock cat-${b.category}${small ? " small" : ""}" data-act="block.edit" data-id="${b.id}"
+          return html`<button class="tblock cat-${b.category}${small ? " small" : ""}${cancelledIds.has(b.id) ? " cancelled" : ""}" data-act="block.edit" data-id="${b.id}"
             style="top:${top}px;height:${h}px;left:calc(${lane} * 100% / ${lanes} + 1px);width:calc(100% / ${lanes} - 2px)"
             title="${b.title} · ${hhmm(b.start_time)}-${hhmm(b.end_time)}">
             <b>${b.title}</b>${small ? "" : html`<small>${hhmm(b.start_time)}–${hhmm(b.end_time)}</small>`}
