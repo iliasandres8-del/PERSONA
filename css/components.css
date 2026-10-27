@@ -311,3 +311,12 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
   .grid-3 .stat b { font-size: 17px; overflow-wrap: normal; }
   .month-nav b { min-width: 100px; }
 }
+
+/* Avisos en el celular (Ajustes) */
+.push-prefs { display: grid; gap: 4px; margin-top: 16px; }
+.push-pref { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid var(--border); cursor: pointer; }
+.push-pref span { display: grid; gap: 2px; }
+.push-pref b { font-weight: 500; }
+.push-pref small { color: var(--muted); font-size: 12.5px; }
+.push-pref input { width: 20px; height: 20px; flex: none; accent-color: var(--accent, var(--c-inicio)); }
+.push-prefs .field { margin-top: 8px; }

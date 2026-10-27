@@ -1,4 +1,4 @@
-// AJUSTES: nombre, tema, jornal, exportar tus datos y cerrar sesión.
+// AJUSTES: nombre, tema, avisos, jornal, exportar tus datos y cerrar sesión.
 import { html, dateKey, money } from "../core/utils.js";
 import { rows, state, TABLES } from "../core/store.js";
 import { settings } from "../core/settings.js";
@@ -6,6 +6,7 @@ import { onActs, onChange } from "../core/actions.js";
 import { view } from "../core/view.js";
 import { icon } from "../ui/icons.js";
 import { toast } from "../ui/toast.js";
+import { pushCard } from "./avisos.js";
 
 const THEMES = [["auto", "Automático"], ["light", "Claro"], ["dark", "Oscuro"]];
 
@@ -47,6 +48,8 @@ export default {
           ([v, l]) => html`<button type="button" class="${s.theme === v ? "on" : ""}" data-act="set.theme" data-v="${v}">${l}</button>`
         )}</div>
       </section>
+
+      ${pushCard()}
 
       <section class="card">
         <header class="card-head"><h2>Dinero</h2></header>
