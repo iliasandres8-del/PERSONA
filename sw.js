@@ -1,7 +1,7 @@
 // Service worker: deja la app abrir sin conexión (solo el "cascarón": HTML, CSS, JS e iconos).
 // Los datos NO se guardan aquí: las llamadas a Supabase son de otro origen y pasan directo.
 // Estrategia "red primero": si hay internet siempre carga la versión más nueva; si no, la copia guardada.
-const CACHE = "panel-v3";
+const CACHE = "panel-v4";
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "index.html"])).then(() => self.skipWaiting()));
