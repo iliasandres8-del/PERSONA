@@ -11,6 +11,12 @@ import { openSheet, closeSheet } from "./ui/modal.js";
 import { openAdd } from "./ui/crud.js";
 import { initTooltips } from "./ui/charts.js";
 import { initAuth } from "./features/auth.js";
+import { openComando } from "./features/comando.js";
+import { openQuickExpense } from "./features/dinero.js";
+import { cancelBlock } from "./core/cancellations.js";
+import { rows, findById } from "./core/store.js";
+import { confirmDialog } from "./ui/modal.js";
+import { toast } from "./ui/toast.js";
 
 import inicio from "./features/inicio.js";
 import tiempo from "./features/tiempo.js";
@@ -88,7 +94,7 @@ subscribe((tables) => {
 
 // ---------- Botón + (acceso rápido) ----------
 const QUICK = [
-  ["gastos", "Gasto", "wallet"], ["ingresos", "Ingreso", "trend"], ["tareas", "Tarea", "book"],
+  ["decir", "Dile al panel", "mic"], ["gastos", "Gasto", "wallet"], ["ingresos", "Ingreso", "trend"], ["tareas", "Tarea", "book"],
   ["ahorros", "Ahorro", "target"], ["sesiones", "Sesión de entreno", "dumbbell"], ["actividades", "Actividad", "clock"]
 ];
 onActs({
@@ -100,7 +106,12 @@ onActs({
         )}</div>`.toString(),
       { label: "Agregar rápido" }
     ),
-  "quick.add": (el) => { closeSheet(true); openAdd(el.dataset.k); }
+  "quick.add": (el) => {
+    closeSheet(true);
+    if (el.dataset.k === "decir") openComando();
+    else if (el.dataset.k === "gastos") openQuickExpense();
+    else openAdd(el.dataset.k);
+  }
 });
 
 // ---------- Sesión ----------
@@ -117,6 +128,7 @@ function onLogin(user) {
       render();
       if (!initial) { window.scrollTo(0, 0); viewEl.focus({ preventScroll: true }); }
     });
+    runUrlAction();
   });
 }
 function onLogout() {
@@ -129,6 +141,27 @@ function onLogout() {
   location.hash = "";
 }
 initAuth({ onLogin, onLogout });
+
+// ---------- Acciones que llegan por la URL (avisos y accesos directos del ícono) ----------
+// ?accion=gasto | ingreso | decir | cancelar&bloque=ID&fecha=AAAA-MM-DD
+async function runUrlAction() {
+  const q = new URLSearchParams(location.search);
+  const accion = q.get("accion");
+  if (!accion) return;
+  history.replaceState(null, "", location.pathname + location.hash);
+  if (accion === "gasto") openQuickExpense();
+  else if (accion === "ingreso") openAdd("ingresos", { description: "Trabajo" });
+  else if (accion === "decir") openComando();
+  else if (accion === "cancelar") {
+    const b = findById("schedule_blocks", q.get("bloque"));
+    const fecha = q.get("fecha");
+    if (!b || !fecha) return;
+    const ya = rows("schedule_exceptions").some((e) => e.block_id === b.id && String(e.exception_date).slice(0, 10) === fecha);
+    if (ya) return;
+    const si = await confirmDialog({ title: `¿Hoy hay ${b.title}?`, message: "Si se canceló, márcala y ese rato te queda como tiempo libre.", confirmLabel: "Se canceló", danger: false });
+    if (si && (await cancelBlock(b, fecha))) toast("Clase cancelada. Ese rato quedó libre ✓");
+  }
+}
 
 // ---------- Reloj: mantiene "ahora" al día sin recargar ----------
 setInterval(() => {

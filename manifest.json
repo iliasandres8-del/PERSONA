@@ -15,6 +15,8 @@
     { "src": "assets/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
   ],
   "shortcuts": [
+    { "name": "Anotar gasto", "short_name": "Gasto", "url": "./?accion=gasto#/dinero/movimientos" },
+    { "name": "Dile al panel", "short_name": "Decir", "url": "./?accion=decir#/inicio" },
     { "name": "Movimientos", "short_name": "Dinero", "url": "./#/dinero/movimientos" },
     { "name": "Mi semana", "short_name": "Semana", "url": "./#/tiempo/semana" },
     { "name": "Tareas", "short_name": "Tareas", "url": "./#/estudio/tareas" },

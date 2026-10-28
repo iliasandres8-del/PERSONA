@@ -10,7 +10,7 @@ export const TABLES = [
   "schedule_blocks", "schedule_exceptions", "activities", "free_time_logs", "subjects", "tasks",
   "income", "expenses", "savings", "debts", "financial_goals", "recurring_expenses",
   "workout_routines", "workout_exercises", "workout_sessions",
-  "reminders", "user_context", "integrations"
+  "reminders", "user_context", "integrations", "grades", "habits", "habit_logs"
 ];
 // Tablas cuyas filas no llevan user_id propio (la política RLS pasa por la rutina).
 const NO_USER = new Set(["workout_exercises"]);

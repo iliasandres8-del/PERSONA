@@ -1,9 +1,9 @@
-// ENTRENO: rutina de hoy con cronómetro y checklist, rutinas con sus ejercicios, historial y progreso.
+// ENTRENO: botón "Entrené hoy", rutina con cronómetro y checklist, rutinas, historial, progreso y hábitos.
 import {
   html, dateKey, dayKeyOf, SEMANA, DIA_LABEL, DIA_CORTO, startOfWeek, addDays, parseDate, sum, fmtDateShort,
   fmtDuration, storage, monthKey
 } from "../core/utils.js";
-import { rows, insert, findById, load, emit } from "../core/store.js";
+import { rows, insert, remove, findById, load, emit } from "../core/store.js";
 import { onActs } from "../core/actions.js";
 import { view } from "../core/view.js";
 import { icon } from "../ui/icons.js";
@@ -11,15 +11,37 @@ import { defineCrud, emptyState, openAdd } from "../ui/crud.js";
 import { openForm } from "../ui/form.js";
 import { toast } from "../ui/toast.js";
 import { columnChart, hBars } from "../ui/charts.js";
+import { habitosView } from "./habitos.js";
 
 const WO_KEY = "panel.workout.v1";
 const getWo = () => storage.get(WO_KEY, null);
 const setWo = (v) => storage.set(WO_KEY, v);
 
+// Lo que cuenta como entreno con el botón rápido (se guarda en workout_sessions.kind)
+export const TIPOS_ENTRENO = [["gym", "🏋️ Gym"], ["futbol", "⚽ Fútbol"], ["correr", "🏃 Correr"], ["casa", "🏠 En la casa"], ["otro", "💪 Otro"]];
+const TIPO_LABEL = Object.fromEntries(TIPOS_ENTRENO);
+
 const routineOptions = () => rows("workout_routines").map((r) => ({ v: r.id, l: r.name }));
-const exercisesOf = (routineId) => rows("workout_exercises").filter((e) => e.routine_id === routineId);
+const exercisesOf = (routineId) => rows("workout_exercises").filter((e) => e.routine_id === routineId)
+  .sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+// "3×10 · descanso 90s" (las planchas van en segundos)
+const exDetail = (e) => [
+  e.sets && e.reps ? (/segundos/i.test(e.name) ? `${e.sets}×${e.reps} s` : `${e.sets}×${e.reps}`) : null,
+  e.weight ? `${e.weight} kg` : null,
+  e.rest_seconds ? `descanso ${e.rest_seconds}s` : null
+].filter(Boolean).join(" · ");
 
 // ---------- Cálculos (también los usa Inicio) ----------
+// Días seguidos entrenando. Si hoy aún no entrenas, cuenta desde ayer.
+function dayStreak(sessions) {
+  const days = new Set(sessions.map((s) => s.session_date));
+  let d = new Date();
+  if (!days.has(dateKey(d))) d = addDays(d, -1);
+  let n = 0;
+  while (days.has(dateKey(d))) { n++; d = addDays(d, -1); }
+  return n;
+}
+
 function weekStreak(sessions) {
   const weeks = new Set(sessions.map((s) => dateKey(startOfWeek(parseDate(s.session_date)))));
   let cur = startOfWeek(new Date());
@@ -49,7 +71,8 @@ export function entrenoInfo() {
     routineToday,
     trainedToday: sessions.some((s) => s.session_date === today),
     exercisesCount: routineToday ? exercisesOf(routineToday.id).length : 0,
-    dots, streak: weekStreak(sessions), last,
+    dots, streak: weekStreak(sessions), dayStreak: dayStreak(sessions), last,
+    todaySessions: sessions.filter((s) => s.session_date === today),
     doneThisWeek: dots.filter((d) => d.done).length,
     plannedThisWeek: dots.filter((d) => d.planned).length
   };
@@ -78,7 +101,8 @@ const ejercicios = defineCrud({
     { name: "sets", label: "Series", type: "number", step: "1", half: true },
     { name: "reps", label: "Repeticiones", type: "number", step: "1", half: true },
     { name: "weight", label: "Peso (kg)", type: "number", step: "0.5", half: true },
-    { name: "rest_seconds", label: "Descanso (seg)", type: "number", step: "5", half: true }
+    { name: "rest_seconds", label: "Descanso (seg)", type: "number", step: "5", half: true },
+    { name: "notes", label: "Cómo se hace", type: "textarea", placeholder: "Opcional: la técnica en tus palabras" }
   ],
   // sets, reps y rest_seconds son enteros en la base: se redondea por si escribes 3.5.
   toRow: (v) => ({
@@ -89,7 +113,7 @@ const ejercicios = defineCrud({
   }),
   row: (e) => ({
     title: e.name,
-    sub: [e.sets && e.reps ? `${e.sets}×${e.reps}` : null, e.weight ? `${e.weight} kg` : null, e.rest_seconds ? `descanso ${e.rest_seconds}s` : null].filter(Boolean).join(" · ") || "Sin detalles"
+    sub: html`${exDetail(e) || "Sin detalles"}${e.notes ? html`<span class="how">${e.notes}</span>` : ""}`
   })
 });
 
@@ -106,7 +130,7 @@ const sesiones = defineCrud({
   row: (s) => {
     const r = rows("workout_routines").find((x) => x.id === s.routine_id);
     return {
-      title: r ? r.name : "Sesión libre",
+      title: r ? r.name : TIPO_LABEL[s.kind] || "Sesión libre",
       sub: [fmtDateShort(s.session_date), s.duration_minutes ? `${s.duration_minutes} min` : null, s.notes].filter(Boolean).join(" · ")
     };
   }
@@ -130,9 +154,24 @@ function exerciseList(routineId, checkable = false, doneSet = new Set()) {
     const on = doneSet.has(e.id);
     return html`<li class="row${on ? " done" : ""}">
       <button class="check${on ? " on" : ""}" type="button" data-act="wo.ex" data-id="${e.id}" aria-label="Marcar ejercicio">${icon("check")}</button>
-      <div class="row-main"><b>${e.name}</b><small>${[e.sets && e.reps ? `${e.sets}×${e.reps}` : null, e.weight ? `${e.weight} kg` : null, e.rest_seconds ? `descanso ${e.rest_seconds}s` : null].filter(Boolean).join(" · ")}</small></div>
+      <div class="row-main"><b>${e.name}</b><small>${exDetail(e)}${e.notes ? html`<span class="how">${e.notes}</span>` : ""}</small></div>
     </li>`;
   })}</ul>`;
+}
+
+// ---------- Botón rápido "Entrené hoy" (lo usa también Inicio) ----------
+export function quickTrainCard(cls = "") {
+  const info = entrenoInfo();
+  const hechos = info.todaySessions.map((s) => s.kind).filter(Boolean);
+  return html`<section class="card quick-train ${cls}">
+    <header class="card-head"><h2>${icon("dumbbell")}${info.trainedToday ? "Hoy ya entrenaste 💪" : "¿Entrenaste hoy?"}</h2>
+      ${info.dayStreak ? html`<span class="pill hot">🔥 ${info.dayStreak} día(s) seguidos</span>` : ""}</header>
+    <p class="hint top">${info.trainedToday ? "Si hiciste algo más, márcalo también." : "Toca lo que hiciste. Todo cuenta, hasta 20 minutos en la casa."}</p>
+    <div class="chip-group">${TIPOS_ENTRENO.map(
+      ([k, l]) => html`<button type="button" class="chip${hechos.includes(k) ? " on" : ""}" data-act="wo.quick" data-k="${k}">${l}</button>`
+    )}</div>
+    ${weekDots(info.dots)}
+  </section>`;
 }
 
 // ---------- Hoy ----------
@@ -175,11 +214,11 @@ function hoyView() {
   return html`
     <div class="grid-3">
       <div class="stat"><span>Esta semana</span><b>${info.doneThisWeek}${info.plannedThisWeek ? html`<em>/${info.plannedThisWeek}</em>` : ""}</b><small>sesiones</small></div>
-      <div class="stat ${info.streak ? "hot" : ""}"><span>Racha</span><b>${info.streak}</b><small>semana(s) seguidas</small></div>
+      <div class="stat ${info.dayStreak ? "hot" : ""}"><span>Racha</span><b>${info.dayStreak}</b><small>día(s) seguidos</small></div>
       <div class="stat"><span>Última sesión</span><b>${info.last ? fmtDateShort(info.last.session_date) : "—"}</b></div>
     </div>
-    <section class="card"><header class="card-head"><h2>Semana</h2></header>${weekDots(info.dots)}</section>
-    ${main}`;
+    ${quickTrainCard()}
+    ${routine || rows("workout_routines").length ? main : ""}`;
 }
 
 // ---------- Rutinas ----------
@@ -236,7 +275,7 @@ function progresoView() {
   const porRutina = {};
   all.forEach((s) => {
     const r = rows("workout_routines").find((x) => x.id === s.routine_id);
-    const n = r ? r.name : "Sin rutina";
+    const n = r ? r.name : TIPO_LABEL[s.kind] || "Sin rutina";
     porRutina[n] = (porRutina[n] || 0) + 1;
   });
   const cats = Object.entries(porRutina).sort((a, b) => b[1] - a[1]);
@@ -263,9 +302,10 @@ function progresoView() {
 
 export default {
   id: "entreno", label: "Entreno", icon: "dumbbell", accent: "entreno",
-  subs: [["hoy", "Hoy"], ["rutinas", "Rutinas"], ["historial", "Historial"], ["progreso", "Progreso"]],
-  tables: ["workout_routines", "workout_exercises", "workout_sessions"],
+  subs: [["hoy", "Hoy"], ["habitos", "Hábitos"], ["rutinas", "Rutinas"], ["historial", "Historial"], ["progreso", "Progreso"]],
+  tables: ["workout_routines", "workout_exercises", "workout_sessions", "habits", "habit_logs"],
   render(sub) {
+    if (sub === "habitos") return habitosView();
     if (sub === "rutinas") return rutinasView();
     if (sub === "historial") return historialView();
     if (sub === "progreso") return progresoView();
@@ -275,6 +315,13 @@ export default {
 
 // ---------- Acciones ----------
 onActs({
+  "wo.quick": async (el) => {
+    const k = el.dataset.k;
+    const ya = rows("workout_sessions").find((s) => s.session_date === dateKey() && s.kind === k && !s.routine_id);
+    el.disabled = true;
+    if (ya) { if (await remove("workout_sessions", ya.id)) toast("Quitado"); return; }
+    if (await insert("workout_sessions", { session_date: dateKey(), kind: k })) toast(`${TIPO_LABEL[k]} anotado 💪`);
+  },
   "wo.start": (el) => { setWo({ routineId: el.dataset.id, start: Date.now(), done: [] }); view.rerender(); },
   "wo.cancel": () => { setWo(null); view.rerender(); },
   "wo.ex": (el) => {

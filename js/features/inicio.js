@@ -1,18 +1,20 @@
 // INICIO: responde "¿qué debería estar haciendo ahora?" cruzando horario, tareas, dinero y entreno.
-import { html, dateKey, fmtDuration, hhmm, relDate, money, nowMinutes, minutesOf } from "../core/utils.js";
+import { html, dateKey, fmtDuration, hhmm, relDate, money, nowMinutes, minutesOf, minToHHMM, addDays, dayKeyOf, daysBetween } from "../core/utils.js";
 import { rows, upsert } from "../core/store.js";
 import { cancelledSet } from "../core/cancellations.js";
 import { onActs } from "../core/actions.js";
 import { view } from "../core/view.js";
-import { analyze, contextLabel } from "../core/recommend.js";
+import { analyze, contextLabel, blocksOf } from "../core/recommend.js";
 import { icon } from "../ui/icons.js";
 import { emptyState } from "../ui/crud.js";
 import { agenda } from "../ui/timeline.js";
 import { meter } from "../ui/charts.js";
 import { CONTEXTS, CAT_LABEL, ATTN_DOT } from "../data/defaults.js";
-import { moneySummary, goalProgress } from "./dinero.js";
-import { entrenoInfo } from "./entreno.js";
-import { aulaReminder, tareas } from "./estudio.js";
+import { moneySummary, goalProgress, todayBudget } from "./dinero.js";
+import { entrenoInfo, quickTrainCard } from "./entreno.js";
+import { aulaReminder, tareas, taskKind } from "./estudio.js";
+import { buildPlan } from "./tiempo.js";
+import { habitsCard } from "./habitos.js";
 import { startFocus } from "./focus.js";
 
 let ctxOpen = false;
@@ -121,16 +123,16 @@ function recoCard(a) {
 }
 
 function kpis() {
-  const m = moneySummary();
+  const b = todayBudget();
   const pend = rows("tasks").filter((t) => t.status !== "completada");
   const today = dateKey();
   const venc = pend.filter((t) => t.due_date && t.due_date < today).length;
   const e = entrenoInfo();
   return html`<div class="kpis o3">
-    <a class="stat" href="#/dinero/resumen"><span>${icon("wallet")}Saldo</span><b class="${m.balance < 0 ? "neg" : ""}">${money(m.balance)}</b><small>disponible</small></a>
+    <a class="stat ${b.queda < 0 ? "neg" : ""}" href="#/dinero/resumen"><span>${icon("wallet")}Hoy puedes</span><b>${money(Math.max(0, b.queda))}</b><small>${b.queda < 0 ? `te pasaste ${money(-b.queda)}` : `gastar · de ${money(b.porDia)}`}</small></a>
     <a class="stat ${venc ? "neg" : ""}" href="#/estudio/tareas"><span>${icon("book")}Tareas</span><b>${pend.length}</b><small>${venc ? `${venc} vencida(s)` : "pendientes"}</small></a>
     <a class="stat" href="#/entreno/progreso"><span>${icon("dumbbell")}Entreno</span><b>${e.doneThisWeek}${e.plannedThisWeek ? html`<em>/${e.plannedThisWeek}</em>` : ""}</b><small>esta semana</small></a>
-    <a class="stat ${e.streak ? "hot" : ""}" href="#/entreno/progreso"><span>${icon("flame")}Racha</span><b>${e.streak}</b><small>semana(s)</small></a>
+    <a class="stat ${e.dayStreak ? "hot" : ""}" href="#/entreno/hoy"><span>${icon("flame")}Racha</span><b>${e.dayStreak}</b><small>día(s) entrenando</small></a>
   </div>`;
 }
 
@@ -168,15 +170,12 @@ function agendaCard(a) {
 
 function trainCard() {
   const e = entrenoInfo();
-  if (!e.routineToday && !rows("workout_routines").length) return "";
+  if (!e.routineToday) return "";
   return html`<section class="card o6 entreno-card">
     <header class="card-head"><h2>${icon("dumbbell")}Entreno de hoy</h2><a class="btn sm ghost" href="#/entreno/hoy">Abrir</a></header>
     ${e.routineToday
       ? html`<div class="routine-hero"><b>${e.routineToday.name}</b><span>${e.exercisesCount} ejercicio(s)${e.trainedToday ? " · ya lo hiciste ✓" : ""}</span></div>`
-      : html`<p class="hint top">Hoy no tienes rutina fija.</p>`}
-    <div class="week-dots">${e.dots.map(
-      (d) => html`<div class="wd${d.done ? " done" : ""}${d.planned ? " planned" : ""}${d.isToday ? " today" : ""}"><i>${d.done ? icon("check") : ""}</i><span>${d.key.slice(0, 1).toUpperCase()}</span></div>`
-    )}</div>
+      : ""}
   </section>`;
 }
 
@@ -191,6 +190,53 @@ function goalCard() {
   </section>`;
 }
 
+// Lo que el Planificador te acomodó hoy en tus huecos libres
+function planCard() {
+  const hoy = buildPlan().days[0];
+  const items = hoy ? hoy.gaps.flatMap((g) => g.placed) : [];
+  if (!items.length) return "";
+  return html`<section class="card o4">
+    <header class="card-head"><h2>${icon("calendar")}Plan de hoy</h2><a class="btn sm ghost" href="#/tiempo/plan">Ver plan</a></header>
+    <ul class="plan-today">${items.slice(0, 4).map(
+      (p) => html`<li><b>${minToHHMM(p.s)}</b><span>${p.title}<small>${p.kind} · ${fmtDuration(p.dur)}</small></span>
+        <button class="icon-btn" type="button" data-act="focus.start" data-title="${p.title}" data-min="${Math.min(p.dur, 50)}" aria-label="Empezar ${p.title}">${icon("play", "fill")}</button></li>`
+    )}</ul>
+  </section>`;
+}
+
+// Parciales y quices de los próximos 3 días
+function examBanner() {
+  const hoy = dateKey();
+  const list = rows("tasks").filter((t) => t.status !== "completada" && t.due_date && ["parcial", "quiz"].includes(taskKind(t)))
+    .map((t) => ({ t, d: daysBetween(hoy, t.due_date) })).filter((x) => x.d >= 0 && x.d <= 3)
+    .sort((a, b) => a.d - b.d);
+  if (!list.length) return "";
+  const { t, d } = list[0];
+  return html`<a class="banner warn o0" href="#/estudio/tareas">${icon("alert")}<span><b>${t.title}</b> · ${d === 0 ? "es hoy" : d === 1 ? "es mañana" : `en ${d} días`}${list.length > 1 ? ` (y ${list.length - 1} más)` : ""}</span>${icon("chevron")}</a>`;
+}
+
+// Cuánto vas a dormir esta noche: desde que termina lo de hoy (mínimo 10 p. m.) + 30 min
+// hasta el primer bloque de mañana. Solo se muestra en la tarde y si son menos de 6,5 h.
+export function sleepTonight(now = new Date()) {
+  const blocks = rows("schedule_blocks");
+  const cancelled = cancelledSet();
+  const man = addDays(now, 1);
+  const deMan = blocksOf(blocks, dayKeyOf(man), cancelled, dateKey(man));
+  if (!deMan.length) return null;
+  const deHoy = blocksOf(blocks, dayKeyOf(now), cancelled, dateKey(now));
+  const acuesto = Math.max(22 * 60, ...deHoy.map((b) => minutesOf(b.end_time))) + 30;
+  const levanto = minutesOf(deMan[0].start_time);
+  return { horas: (24 * 60 - acuesto + levanto) / 60, levanto, primero: deMan[0] };
+}
+
+function sleepCard() {
+  if (new Date().getHours() < 17) return "";
+  const s = sleepTonight();
+  if (!s || s.horas >= 6.5) return "";
+  const h = String(Math.max(0, Math.round(s.horas * 2) / 2)).replace(".", ",");
+  return html`<div class="callout warn sleep-note o1"><b>😴 Hoy vas a dormir unas ${h} h</b><p>Mañana arrancas a las ${minToHHMM(s.levanto)} con ${s.primero.title.split("(")[0].trim()}. Deja la ropa y la mochila listas y acuéstate apenas llegues.</p></div>`;
+}
+
 function aulaBanner() {
   const r = aulaReminder();
   if (!r.row || !r.due) return "";
@@ -199,7 +245,7 @@ function aulaBanner() {
 
 export default {
   id: "inicio", label: "Inicio", icon: "home", accent: "inicio", subs: null,
-  tables: ["schedule_blocks", "schedule_exceptions", "subjects", "tasks", "income", "expenses", "savings", "financial_goals", "workout_routines", "workout_exercises", "workout_sessions", "user_context", "reminders"],
+  tables: ["schedule_blocks", "schedule_exceptions", "subjects", "tasks", "income", "expenses", "savings", "financial_goals", "recurring_expenses", "workout_routines", "workout_exercises", "workout_sessions", "user_context", "reminders", "activities", "habits", "habit_logs"],
   render() {
     const a = analyze({
       blocks: rows("schedule_blocks"), subjects: rows("subjects"), tasks: rows("tasks"),
@@ -207,9 +253,9 @@ export default {
       cancelled: cancelledSet()
     });
     return html`<div class="home">
-      ${aulaBanner()}
-      <div class="home-col main">${nowCard(a)}${recoCard(a)}${agendaCard(a)}</div>
-      <div class="home-col side">${kpis()}${tasksCard()}${trainCard()}${goalCard()}</div>
+      ${examBanner()}${aulaBanner()}
+      <div class="home-col main">${nowCard(a)}${sleepCard()}${recoCard(a)}${planCard()}${agendaCard(a)}</div>
+      <div class="home-col side">${kpis()}${tasksCard()}${habitsCard("o5")}${quickTrainCard("o6")}${trainCard()}${goalCard()}</div>
     </div>`;
   }
 };

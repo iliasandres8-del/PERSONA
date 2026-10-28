@@ -10,6 +10,7 @@ import { settings } from "../core/settings.js";
 import { icon } from "../ui/icons.js";
 import { defineCrud, emptyState } from "../ui/crud.js";
 import { openForm } from "../ui/form.js";
+import { openSheet, closeSheet } from "../ui/modal.js";
 import { toast } from "../ui/toast.js";
 import { columnChart, hBars, meter } from "../ui/charts.js";
 import { GASTO_CATEGORIAS, FUGAS } from "../data/defaults.js";
@@ -40,6 +41,98 @@ export function goalProgress() {
   }
   return { goal, saved, pct, falta, dias, porSemana };
 }
+// "Hoy puedes gastar": lo que tenías al empezar el día, menos los fijos que vencen antes del
+// próximo pago, repartido en los días que faltan para el viernes (te pagan cada viernes).
+const PAYDAY = 5;
+export function todayBudget(now = new Date()) {
+  const hoy = dateKey(now);
+  const gastadoHoy = sum(rows("expenses").filter((x) => x.entry_date === hoy), (x) => x.amount);
+  const inicioDia = moneySummary().balance + gastadoHoy;
+  const cobroHoy = rows("income").some((x) => x.entry_date === hoy);
+  let dias = (PAYDAY - now.getDay() + 7) % 7;
+  if (dias === 0) dias = cobroHoy ? 7 : 1; // viernes: si ya anotaste el pago, hasta el otro viernes
+  const pago = dateKey(addDays(now, dias));
+  const mes = monthKey(now);
+  const pagadoEsteMes = (f) => rows("expenses").some((x) => inMonth(x.entry_date, mes) && String(x.description || "").trim().toLowerCase() === String(f.description).trim().toLowerCase());
+  const fijosAntes = rows("recurring_expenses").filter((f) => {
+    const d = nextDue(f);
+    return d && d >= hoy && d < pago && !pagadoEsteMes(f);
+  });
+  const reservado = sum(fijosAntes, (f) => f.amount);
+  const porDia = Math.max(0, Math.floor((inicioDia - reservado) / dias / 500) * 500);
+  return { porDia, gastadoHoy, queda: porDia - gastadoHoy, dias, pago, reservado, fijosAntes };
+}
+
+export function budgetHero() {
+  const b = todayBudget();
+  const hasta = b.dias === 1 ? "para hoy" : `por día hasta el viernes (${b.dias} días)`;
+  return html`<div class="budget ${b.queda < 0 ? "neg" : ""}">
+    <span>Hoy puedes gastar</span>
+    <b>${money(Math.max(0, b.queda))}</b>
+    <small>${b.queda < 0 ? `Te pasaste ${money(-b.queda)} hoy. Mañana tendrás un poco menos.` : `${money(b.porDia)} ${hasta}${b.gastadoHoy ? ` · ya gastaste ${money(b.gastadoHoy)}` : ""}`}</small>
+    ${b.reservado ? html`<small>Ya aparté ${money(b.reservado)} para ${b.fijosAntes.map((f) => f.description).join(", ")}.</small>` : ""}
+  </div>`;
+}
+
+// ---------- Anotar un gasto rápido: monto, categoría y listo ----------
+export function openQuickExpense(preset = {}) {
+  const usadas = {};
+  rows("expenses").forEach((g) => { const d = String(g.description || "").trim(); if (d) usadas[d] = (usadas[d] || 0) + 1; });
+  const top = Object.entries(usadas).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([d]) => d);
+  const cat = preset.category || "Comida afuera";
+  openSheet(
+    html`<form class="form quick-exp" novalidate>
+      <h3 class="sheet-title">Anotar gasto</h3>
+      <label class="big-amount"><span>$</span><input name="amount" type="number" inputmode="numeric" placeholder="0" value="${preset.amount || ""}" aria-label="Monto" required></label>
+      <p class="field-label">¿En qué?</p>
+      <div class="chip-group" data-group="category">${GASTO_CATEGORIAS.map((c) => html`<button type="button" class="chip${c === cat ? " on" : ""}" data-v="${c}">${c}</button>`)}</div>
+      <div class="field"><label for="qe-desc">Descripción</label><input id="qe-desc" name="description" type="text" value="${preset.description || ""}" placeholder="Ej: Almuerzo" autocomplete="off"></div>
+      ${top.length ? html`<div class="chip-group small" data-group="desc">${top.map((d) => html`<button type="button" class="chip" data-v="${d}">${d}</button>`)}</div>` : ""}
+      <p class="form-error" role="alert"></p>
+      <div class="sheet-actions">
+        <button class="btn ghost" type="button" data-sheet-close>Cancelar</button>
+        <button class="btn primary" type="submit">Guardar</button>
+      </div>
+    </form>`.toString(),
+    {
+      accent: "dinero",
+      label: "Anotar gasto",
+      onMount: (sheet) => {
+        const form = sheet.querySelector("form");
+        let category = cat;
+        const pick = (v) => {
+          category = v;
+          sheet.querySelectorAll('[data-group="category"] .chip').forEach((c) => c.classList.toggle("on", c.dataset.v === v));
+        };
+        sheet.querySelector('[data-group="category"]').addEventListener("click", (e) => {
+          const b = e.target.closest("[data-v]");
+          if (b) pick(b.dataset.v);
+        });
+        const desc = sheet.querySelector('[data-group="desc"]');
+        if (desc) desc.addEventListener("click", (e) => {
+          const b = e.target.closest("[data-v]");
+          if (!b) return;
+          form.elements.description.value = b.dataset.v;
+          const prev = rows("expenses").find((g) => g.description === b.dataset.v);
+          if (prev && GASTO_CATEGORIAS.includes(prev.category)) pick(prev.category);
+        });
+        if (!preset.amount) setTimeout(() => form.elements.amount.focus(), 250);
+        form.addEventListener("submit", async (e) => {
+          e.preventDefault();
+          const amount = Number(form.elements.amount.value);
+          if (!amount || amount <= 0) { sheet.querySelector(".form-error").textContent = "Escribe cuánto gastaste."; return; }
+          form.querySelector('[type="submit"]').disabled = true;
+          const ok = await insert("expenses", { entry_date: dateKey(), amount, category, description: form.elements.description.value.trim() || category });
+          if (!ok) { form.querySelector('[type="submit"]').disabled = false; return; }
+          closeSheet();
+          const b = todayBudget();
+          toast(b.queda >= 0 ? `Anotado ✓ Hoy te quedan ${money(b.queda)}` : `Anotado ✓ Hoy te pasaste ${money(-b.queda)}`);
+        });
+      }
+    }
+  );
+}
+
 const inMonth = (d, key) => String(d || "").slice(0, 7) === key;
 const monthTotals = (key) => ({
   income: sum(rows("income").filter((x) => inMonth(x.entry_date, key)), (x) => x.amount),
@@ -176,9 +269,10 @@ function resumenView() {
 
   return html`
     <div class="hero-row">
+      ${budgetHero()}
       <div class="hero-num"><span>Saldo disponible</span><b>${money(sum_.balance)}</b><small>Ingresos − gastos − ahorros (todo el tiempo)</small></div>
-      ${monthNav()}
     </div>
+    <div class="toolbar"><button class="btn primary" type="button" data-act="din.quick">${icon("plus")}<span>Anotar gasto</span></button>${monthNav()}</div>
 
     <div class="grid-3">
       ${stat("Ingresos", money(mt.income), "", "pos")}
@@ -365,6 +459,7 @@ onActs({
     month = next;
     view.rerender();
   },
+  "din.quick": () => openQuickExpense(),
   "din.filter": (el) => { movFilter = el.dataset.f; view.rerender(); },
   "din.togglePaid": () => { showPaid = !showPaid; view.rerender(); },
   "din.jornal": async () => {

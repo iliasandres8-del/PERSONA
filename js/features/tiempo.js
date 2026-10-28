@@ -80,7 +80,7 @@ const libre = defineCrud({
 });
 
 // ---------- Planificador de huecos ----------
-function buildPlan() {
+export function buildPlan() {
   const blocks = rows("schedule_blocks");
   const now = new Date();
   const today = dateKey(now);
@@ -157,6 +157,23 @@ function planView() {
     </section>`;
 }
 
+// ---------- Huecos libres del día elegido ----------
+function freeCard(blocks, now) {
+  const isToday = weekDay === dayKeyOf(now);
+  // Fecha real del día elegido dentro de los próximos 7 días (para contar sus cancelaciones)
+  let d = new Date(now);
+  while (dayKeyOf(d) !== weekDay) d = addDays(d, 1);
+  const gaps = dayGaps(blocks, weekDay, { from: 5 * 60, min: 30, after: isToday ? nowMinutes(now) : 0, cancelled: cancelledSet(), date: dateKey(d) });
+  const total = sum(gaps, ([a, b]) => b - a);
+  return html`<section class="card">
+    <header class="card-head"><h2>Libre ${isToday ? "lo que queda de hoy" : "el " + DIA_LABEL[weekDay]}</h2>${gaps.length ? html`<span class="muted">${fmtDuration(total)} en total</span>` : ""}</header>
+    ${gaps.length
+      ? html`<div class="free-gaps">${gaps.map(([a, b]) => html`<span class="free-gap"><b>${minToHHMM(a)}–${minToHHMM(b)}</b><small>${fmtDuration(b - a)}</small></span>`)}</div>
+        <p class="hint">Buenos ratos para estudiar, entrenar o descansar. El Planificador te reparte las tareas aquí.</p>`
+      : html`<p class="empty small">Este día no te quedan ratos libres de media hora o más.</p>`}
+  </section>`;
+}
+
 // ---------- Semana ----------
 function semanaView() {
   const blocks = rows("schedule_blocks");
@@ -175,7 +192,8 @@ function semanaView() {
       ${empty
         ? emptyState({ title: "Aún no tienes horario", text: "Carga tu horario base de un toque o agrega bloques uno a uno." })
         : weekGrid({ blocks, selectedDay: weekDay, todayKey: dayKeyOf(now), nowMin: nowMinutes(now), cancelledIds })}
-    </section>`;
+    </section>
+    ${empty ? "" : freeCard(blocks, now)}`;
 }
 
 function actividadesView() {

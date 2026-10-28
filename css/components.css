@@ -320,3 +320,77 @@ input::placeholder, textarea::placeholder { color: var(--faint); }
 .push-pref small { color: var(--muted); font-size: 12.5px; }
 .push-pref input { width: 20px; height: 20px; flex: none; accent-color: var(--accent, var(--c-inicio)); }
 .push-prefs .field { margin-top: 8px; }
+
+/* ---------- Mejoras oct. 2026 ---------- */
+.tag.warn { background: color-mix(in srgb, var(--warn) 18%, transparent); }
+.pill.hot { background: color-mix(in srgb, var(--c-entreno) 16%, transparent); color: var(--c-entreno); }
+.banner.warn .ic { color: var(--warn); }
+.chip-group.small .chip { font-size: 12.5px; padding: 5px 10px; }
+.row-main small .how { display: block; flex-basis: 100%; margin-top: 1px; color: var(--faint); font-size: 12px; line-height: 1.4; }
+
+/* Hoy puedes gastar */
+.budget { display: flex; flex-direction: column; gap: 2px; min-width: 0; padding: 14px 16px; border-radius: var(--radius); background: color-mix(in srgb, var(--c-dinero) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--c-dinero) 30%, transparent); flex: 1 1 260px; }
+.budget > span { color: var(--muted); font-size: 13px; }
+.budget b { font: 700 38px/1.1 var(--font-display); color: var(--c-dinero); letter-spacing: -.02em; }
+.budget.neg b { color: var(--danger); }
+.budget small { color: var(--muted); font-size: 12.5px; }
+
+/* Anotar gasto rápido */
+.big-amount { display: flex; align-items: center; gap: 6px; padding: 6px 14px; border-radius: var(--radius-sm); border: 1px solid var(--border-strong); background: var(--surface-2); margin-bottom: 14px; }
+.big-amount span { font: 600 28px var(--font-display); color: var(--muted); }
+.big-amount input { flex: 1; min-width: 0; border: 0 !important; background: transparent !important; font: 700 32px/1.3 var(--font-display) !important; padding: 4px 0 !important; box-shadow: none !important; }
+.field-label { font-size: 13px; font-weight: 500; margin: 0 0 8px; }
+.quick-exp .chip-group { margin-bottom: 14px; }
+
+/* Hábitos */
+.habit-list { display: flex; flex-direction: column; gap: 8px; }
+.habit { width: 100%; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: var(--radius-sm); border: 1px solid var(--border); background: var(--surface-2); color: var(--text); text-align: left; font-size: 14px; }
+.habit-ic { font-size: 18px; }
+.habit-name { flex: 1; }
+.habit-streak { font-size: 12px; color: var(--c-entreno); font-weight: 600; }
+.habit-check { width: 24px; height: 24px; border-radius: 50%; border: 2px solid var(--border-strong); display: grid; place-items: center; flex: none; }
+.habit-check .ic { width: 14px; height: 14px; opacity: 0; color: #fff; }
+.habit.on { border-color: color-mix(in srgb, var(--ok) 45%, transparent); background: color-mix(in srgb, var(--ok) 10%, var(--surface)); }
+.habit.on .habit-name { color: var(--muted); text-decoration: line-through; }
+.habit.on .habit-check { background: var(--ok); border-color: var(--ok); }
+.habit.on .habit-check .ic { opacity: 1; }
+
+/* Entreno rápido */
+.quick-train .chip-group { margin-bottom: 14px; }
+
+/* Plan de hoy */
+.plan-today { display: flex; flex-direction: column; }
+.plan-today li { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--border); }
+.plan-today li:last-child { border-bottom: 0; }
+.plan-today li > b { font: 600 14px var(--font-display); min-width: 46px; color: var(--accent); }
+.plan-today li > span { flex: 1; min-width: 0; display: flex; flex-direction: column; font-size: 14px; }
+.plan-today small { color: var(--muted); font-size: 12px; }
+
+/* Huecos libres */
+.free-gaps { display: flex; flex-wrap: wrap; gap: 8px; }
+.free-gap { display: flex; flex-direction: column; padding: 8px 12px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--c-tiempo) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--c-tiempo) 25%, transparent); }
+.free-gap b { font-size: 14px; }
+.free-gap small { color: var(--muted); font-size: 12px; }
+
+/* Dile al panel */
+.cmd-input { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+.cmd-input input { flex: 1; min-width: 0; font-size: 16px !important; }
+.mic { width: 44px; height: 44px; flex: none; border: 1px solid var(--border-strong); }
+.mic.on { background: var(--danger); color: #fff; border-color: var(--danger); animation: mic-pulse 1.2s ease-in-out infinite; }
+@keyframes mic-pulse { 50% { box-shadow: 0 0 0 8px color-mix(in srgb, var(--danger) 20%, transparent); } }
+@media (prefers-reduced-motion: reduce) { .mic.on { animation: none; } }
+.cmd-preview { min-height: 52px; margin-top: 12px; }
+.cmd-ok { display: flex; gap: 10px; align-items: flex-start; padding: 12px; border-radius: var(--radius-sm); background: color-mix(in srgb, var(--ok) 10%, var(--surface)); border: 1px solid color-mix(in srgb, var(--ok) 35%, transparent); }
+.cmd-ok > .ic { color: var(--ok); flex: none; margin-top: 2px; }
+.cmd-ok div { display: flex; flex-direction: column; gap: 2px; font-size: 14px; }
+.cmd-ok span { color: var(--muted); font-size: 13px; }
+.talk-btn { color: var(--c-inicio); }
+
+/* Gmail */
+.steps { padding-left: 20px; display: flex; flex-direction: column; gap: 10px; font-size: 14px; list-style: decimal; }
+.code-box { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+.code-box pre { width: 100%; max-height: 180px; overflow: auto; padding: 10px; border-radius: var(--radius-sm); background: var(--surface-2); border: 1px solid var(--border); font-size: 11.5px; line-height: 1.45; white-space: pre; }
+.topbar .talk-btn { margin-left: auto; }
+.sleep-note { margin-bottom: 16px; }
+.big-amount input::-webkit-inner-spin-button, .big-amount input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.big-amount input { -moz-appearance: textfield; appearance: textfield; }

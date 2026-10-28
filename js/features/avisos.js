@@ -12,11 +12,15 @@ const AVISOS_URL = `${SUPABASE_URL}/functions/v1/avisos`;
 const esIphone = /iphone|ipad|ipod/i.test(navigator.userAgent);
 const instalada = matchMedia("(display-mode: standalone)").matches || navigator.standalone === true;
 const PREFS = [
-  ["morning", "Mi día, a las 5 a. m.", "Clases, trabajo y lo que vence hoy o mañana"],
-  ["before_block", "Antes de cada clase y del trabajo", "No avisa las clases que marcaste como canceladas"],
-  ["tasks_night", "Tareas de mañana, a las 9 p. m.", "Solo si algo vence al día siguiente"]
+  ["morning", "Mi día, a las 5 a. m.", "Clases, gym, trabajo, entregas, parciales en 3 días y un hueco para estudiar"],
+  ["before_block", "Antes de cada clase, del gym y del trabajo", "En las clases trae el botón «Hoy no hay clase»"],
+  ["tasks_night", "Tareas de mañana, a las 9 p. m.", "Solo si algo vence al día siguiente"],
+  ["sleep", "Cuánto voy a dormir", "A las 9 p. m., si esa noche te tocan menos de 6 horas y media"],
+  ["money", "Plata", "El viernes en la noche para anotar el pago, y los gastos fijos que tocan"],
+  ["training", "Entreno", "Los días sin gym, cuando tengas un rato libre y no hayas entrenado en 2 días"],
+  ["weekly", "Resumen del domingo, 8 p. m.", "Cuánto gastaste, cuánto entrenaste y lo que entregas en la semana"]
 ];
-const DEFAULTS = { morning: true, before_block: true, tasks_night: true, lead_minutes: 15 };
+const DEFAULTS = { morning: true, before_block: true, tasks_night: true, sleep: true, money: true, training: true, weekly: true, lead_minutes: 15 };
 
 let estado = "revisando";
 let prefs = { ...DEFAULTS };

@@ -7,6 +7,7 @@ import { view } from "../core/view.js";
 import { icon } from "../ui/icons.js";
 import { toast } from "../ui/toast.js";
 import { pushCard } from "./avisos.js";
+import { gmailCard } from "./gmail.js";
 
 const THEMES = [["auto", "Automático"], ["light", "Claro"], ["dark", "Oscuro"]];
 
@@ -29,7 +30,7 @@ const csvCell = (v) => {
 
 export default {
   id: "ajustes", label: "Ajustes", icon: "sliders", accent: "inicio", subs: null, hidden: true,
-  tables: ["integrations"],
+  tables: ["integrations", "recurring_expenses"],
   render() {
     const s = settings.all();
     return html`
@@ -57,6 +58,8 @@ export default {
           <input id="set-jornal" type="number" inputmode="numeric" value="${s.jornal || ""}" data-change="set.field" data-field="jornal" data-number="1">
           <small>Se usa en el botón "Trabajé hoy". Déjalo vacío para ocultarlo. Ahora: ${s.jornal ? money(s.jornal) : "oculto"}.</small></div>
       </section>
+
+      ${gmailCard()}
 
       <section class="card">
         <header class="card-head"><h2>Tus datos</h2></header>
